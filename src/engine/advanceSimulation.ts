@@ -1,8 +1,10 @@
-import { distanceMetersBetween, offsetLatLng } from '../map/geo'
+import { distanceMetersBetween, pointOnCircle } from '../map/geo'
 import type { LatLng } from '../map/geo'
+import { INVESTIGATION_DURATION_SIM_SECONDS, investigatePositionFor, selectNearestAvailableDrone } from './dispatch'
+import type { DispatchCandidate } from './dispatch'
 import type { EventType, Scenario, ScenarioEvent } from '../scenario/types'
 import type { BaseStation, DroneType, World } from '../world/types'
-import type { DronePatrolState, EventRuntimeState, SimulationState, TowerDetectionState } from './types'
+import type { DroneActivityState, DronePatrolState, EventRuntimeState, SimulationState, TowerDetectionState } from './types'
 
 /**
  * Per-Drone-type patrol loop parameters (ADR/PRD design guidance): a
@@ -43,13 +45,6 @@ function phaseOffsetForDroneId(droneId: string): number {
     charCodeSum += droneId.charCodeAt(i)
   }
   return (charCodeSum % 360) * (Math.PI / 180)
-}
-
-/** The point on a circular patrol loop at the given absolute angle. */
-function patrolPositionAtAngle(patrolCenter: LatLng, patrolRadiusMeters: number, angleRadians: number): LatLng {
-  const dxMeters = patrolRadiusMeters * Math.cos(angleRadians)
-  const dyMeters = patrolRadiusMeters * Math.sin(angleRadians)
-  return offsetLatLng(patrolCenter, dxMeters, dyMeters)
 }
 
 function findHomeBaseStation(world: World, homeBaseStationId: string): BaseStation {
@@ -197,16 +192,196 @@ function eventsAt(
 }
 
 /**
+ * A Drone's `DroneActivityState` after checking whether an ongoing
+ * investigation's duration has elapsed by `elapsedSimSeconds` — the
+ * dispatch-side mirror of `eventWithDetectionApplied`'s sticky-status
+ * merge: `'investigating'` is carried forward from `incomingActivity`
+ * unless `INVESTIGATION_DURATION_SIM_SECONDS` has passed since it started,
+ * in which case the Drone reverts to `'patrolling'` (issue F: "After the
+ * investigation interval elapses, the Drone's mode flips back to
+ * patrolling"). Missing/`'patrolling'` input passes through unchanged.
+ */
+function activityAfterInvestigationExpiry(
+  incomingActivity: DroneActivityState | undefined,
+  elapsedSimSeconds: number,
+): DroneActivityState {
+  if (!incomingActivity || incomingActivity.mode === 'patrolling') {
+    return { mode: 'patrolling' }
+  }
+
+  const secondsSinceInvestigationStarted = elapsedSimSeconds - incomingActivity.investigationStartedAtSimSeconds
+  if (secondsSinceInvestigationStarted >= INVESTIGATION_DURATION_SIM_SECONDS) {
+    return { mode: 'patrolling' }
+  }
+
+  return incomingActivity
+}
+
+/**
+ * A Drone's position at `elapsedSimSeconds` given its current `activity`:
+ * its normal closed-form patrol-loop position while `'patrolling'` (slice
+ * C, unchanged), or — while `'investigating'` — a hover/circle position
+ * around the assigned Event, looked up from `incomingEvents` (the Event's
+ * position never changes once spawned, so the previous tick's copy is a
+ * safe, stable source). Falls back to the patrol position if the assigned
+ * Event is somehow missing from `incomingEvents`, which should not happen
+ * in practice (dispatch only ever assigns an Event id already present in
+ * that tick's `events`) but keeps this function total rather than throwing.
+ */
+function positionForActivity(
+  patrol: DronePatrolState,
+  activity: DroneActivityState,
+  elapsedSimSeconds: number,
+  incomingEvents: Record<string, EventRuntimeState>,
+): LatLng {
+  if (activity.mode === 'investigating') {
+    const assignedEvent = incomingEvents[activity.assignedEventId]
+    if (assignedEvent) {
+      return investigatePositionFor(
+        patrol.droneType,
+        assignedEvent.position,
+        elapsedSimSeconds - activity.investigationStartedAtSimSeconds,
+      )
+    }
+  }
+
+  const angleRadians = patrol.phaseOffsetRadians + patrol.angularSpeedRadiansPerSecond * elapsedSimSeconds
+  return pointOnCircle(patrol.patrolCenter, patrol.patrolRadiusMeters, angleRadians)
+}
+
+/**
+ * The Event ids that flipped from not-yet-`'detected'` to `'detected'`
+ * *within this same call* — comparing `incomingEvents` (the state entering
+ * this tick) against `events` (this tick's freshly Detection-checked
+ * result). Per issue F's design guidance, this is a Drone's one and only
+ * dispatch opportunity for that Event: sorted by id for a stable,
+ * deterministic processing order when several Events are newly Detected in
+ * the same tick.
+ */
+function newlyDetectedEventIds(
+  incomingEvents: Record<string, EventRuntimeState>,
+  events: Record<string, EventRuntimeState>,
+): string[] {
+  return Object.keys(events)
+    .filter((id) => events[id].status === 'detected' && incomingEvents[id]?.status !== 'detected' && incomingEvents[id]?.status !== 'resolved')
+    .sort()
+}
+
+/**
+ * Applies this tick's dispatch decisions on top of `droneActivityAfterExpiry`:
+ * for each newly-Detected Event (in stable id order — see
+ * `newlyDetectedEventIds`), picks the nearest currently-`'patrolling'`
+ * Drone (by its `dronePatrol` position *this tick*, before dispatch — see
+ * `selectNearestAvailableDrone`) and switches it to `'investigating'` that
+ * Event as of `elapsedSimSeconds`. A Drone dispatched to an earlier Event
+ * in this same loop is excluded from later Events in the loop (it's no
+ * longer `'patrolling'` in the accumulator), so at most one Drone is
+ * assigned per Event and no Drone is double-booked in a single tick. If no
+ * Drone is available for a given Event, that Event is simply left
+ * undispatched this tick (issue F: "the Detection still stands but no
+ * dispatch occurs") — there is deliberately no retry on a later tick.
+ */
+function withNewDispatches(
+  droneActivityAfterExpiry: Record<string, DroneActivityState>,
+  dronePatrol: Record<string, DronePatrolState>,
+  incomingEvents: Record<string, EventRuntimeState>,
+  events: Record<string, EventRuntimeState>,
+  elapsedSimSeconds: number,
+): Record<string, DroneActivityState> {
+  const droneActivity: Record<string, DroneActivityState> = { ...droneActivityAfterExpiry }
+
+  for (const eventId of newlyDetectedEventIds(incomingEvents, events)) {
+    const candidates: DispatchCandidate[] = Object.entries(droneActivity)
+      .filter(([, activity]) => activity.mode === 'patrolling')
+      .map(([droneId]) => ({ id: droneId, position: dronePatrol[droneId].position }))
+
+    const selectedDroneId = selectNearestAvailableDrone(events[eventId].position, candidates)
+    if (selectedDroneId === undefined) continue
+
+    droneActivity[selectedDroneId] = {
+      mode: 'investigating',
+      assignedEventId: eventId,
+      investigationStartedAtSimSeconds: elapsedSimSeconds,
+    }
+  }
+
+  return droneActivity
+}
+
+/**
+ * The shared derivation behind both `initializeSimulationState` (called
+ * with `incomingDroneActivity`/`incomingEvents` both empty, so an Event
+ * Detected right at `elapsedSimSeconds = 0` still gets its one dispatch
+ * opportunity) and `advanceSimulation` (called with the previous tick's
+ * `droneActivity`/`events` as memory). Order matters: (1) let any
+ * in-progress investigation expire back to `'patrolling'` first, (2)
+ * derive every Drone's position from its (possibly just-expired) activity,
+ * (3) run Detection using those positions, (4) dispatch newly-Detected
+ * Events to nearest-available Drones, then (5) re-derive position only for
+ * Drones newly switched to `'investigating'` this tick, so they appear at
+ * their investigate position immediately rather than one tick later.
+ */
+function deriveDronesAndEvents(
+  dronePatrolParams: Record<string, DronePatrolState>,
+  towerDetection: Record<string, TowerDetectionState>,
+  scenarioEvents: readonly ScenarioEvent[],
+  elapsedSimSeconds: number,
+  incomingDroneActivity: Record<string, DroneActivityState>,
+  incomingEvents: Record<string, EventRuntimeState>,
+): { dronePatrol: Record<string, DronePatrolState>; droneActivity: Record<string, DroneActivityState>; events: Record<string, EventRuntimeState> } {
+  const droneActivityAfterExpiry: Record<string, DroneActivityState> = {}
+  for (const droneId of Object.keys(dronePatrolParams)) {
+    droneActivityAfterExpiry[droneId] = activityAfterInvestigationExpiry(incomingDroneActivity[droneId], elapsedSimSeconds)
+  }
+
+  const dronePatrolBeforeDispatch: Record<string, DronePatrolState> = {}
+  for (const [droneId, patrol] of Object.entries(dronePatrolParams)) {
+    dronePatrolBeforeDispatch[droneId] = {
+      ...patrol,
+      position: positionForActivity(patrol, droneActivityAfterExpiry[droneId], elapsedSimSeconds, incomingEvents),
+    }
+  }
+
+  const events = eventsAt(scenarioEvents, elapsedSimSeconds, incomingEvents, dronePatrolBeforeDispatch, towerDetection)
+
+  const droneActivity = withNewDispatches(droneActivityAfterExpiry, dronePatrolBeforeDispatch, incomingEvents, events, elapsedSimSeconds)
+
+  const dronePatrol: Record<string, DronePatrolState> = {}
+  for (const [droneId, patrol] of Object.entries(dronePatrolBeforeDispatch)) {
+    const activity = droneActivity[droneId]
+    const wasAlreadyInvestigating = droneActivityAfterExpiry[droneId]?.mode === 'investigating'
+
+    if (activity.mode === 'investigating' && !wasAlreadyInvestigating) {
+      const assignedEvent = events[activity.assignedEventId]
+      dronePatrol[droneId] = {
+        ...patrol,
+        position: investigatePositionFor(
+          patrol.droneType,
+          assignedEvent.position,
+          elapsedSimSeconds - activity.investigationStartedAtSimSeconds,
+        ),
+      }
+    } else {
+      dronePatrol[droneId] = patrol
+    }
+  }
+
+  return { dronePatrol, droneActivity, events }
+}
+
+/**
  * Builds the initial {@link SimulationState} for `world` and `scenario`:
  * one patrol loop per Drone (centered on its home Base Station, sized/sped/
  * ranged per its `DroneType` — see `PATROL_PARAMS_BY_DRONE_TYPE` and
  * `DETECTION_RADIUS_METERS_BY_DRONE_TYPE`), one detection entry per Tower,
  * plus whichever of the Scenario's Events have already spawned (and been
- * Detection-checked) at `elapsedSimSeconds = 0`. Base Stations are static
- * in this slice and carry no simulation state.
+ * Detection-checked, and dispatched a Drone if newly Detected) at
+ * `elapsedSimSeconds = 0`. Every Drone starts `'patrolling'` (issue F).
+ * Base Stations are static in this slice and carry no simulation state.
  */
 export function initializeSimulationState(world: World, scenario: Scenario): SimulationState {
-  const dronePatrol: Record<string, DronePatrolState> = {}
+  const dronePatrolParams: Record<string, DronePatrolState> = {}
+  const initialDroneActivity: Record<string, DroneActivityState> = {}
 
   for (const drone of world.drones) {
     const homeBaseStation = findHomeBaseStation(world, drone.homeBaseStationId)
@@ -220,14 +395,16 @@ export function initializeSimulationState(world: World, scenario: Scenario): Sim
     const phaseOffsetRadians = phaseOffsetForDroneId(drone.id)
     const patrolCenter = homeBaseStation.position
 
-    dronePatrol[drone.id] = {
+    dronePatrolParams[drone.id] = {
+      droneType: drone.type,
       patrolCenter,
       patrolRadiusMeters: radiusMeters,
       angularSpeedRadiansPerSecond: linearSpeedMetersPerSecond / radiusMeters,
       phaseOffsetRadians,
       detectionRadiusMeters,
-      position: patrolPositionAtAngle(patrolCenter, radiusMeters, phaseOffsetRadians),
+      position: pointOnCircle(patrolCenter, radiusMeters, phaseOffsetRadians),
     }
+    initialDroneActivity[drone.id] = { mode: 'patrolling' }
   }
 
   const towerDetection: Record<string, TowerDetectionState> = {}
@@ -235,49 +412,54 @@ export function initializeSimulationState(world: World, scenario: Scenario): Sim
     towerDetection[tower.id] = { position: tower.position, detectionRadiusMeters: tower.detectionRadiusMeters }
   }
 
+  const derived = deriveDronesAndEvents(dronePatrolParams, towerDetection, scenario.events, 0, initialDroneActivity, {})
+
   return {
     elapsedSimSeconds: 0,
-    dronePatrol,
+    dronePatrol: derived.dronePatrol,
+    droneActivity: derived.droneActivity,
     towerDetection,
     scenarioEvents: scenario.events,
-    events: eventsAt(scenario.events, 0, {}, dronePatrol, towerDetection),
+    events: derived.events,
   }
 }
 
 /**
  * Advances the simulation to the given *absolute* simulated time and
  * returns a new state — it never mutates `state`. Each Drone's position is
- * a closed-form, memoryless function of `elapsedSimSeconds` alone (patrol
- * parameters, unchanging), so calling this with the same `state` and
- * `elapsedSimSeconds` always returns identical Drone positions no matter
- * how many times or in what order it's called (see the determinism tests
- * in `advanceSimulation.test.ts`). Event `status`, however, is genuinely
- * history-dependent — Detection is monotonic (see `eventWithDetectionApplied`)
- * — so this reads `state.events` as its memory of what's already been
- * Detected; the same `state` + `elapsedSimSeconds` pair still always
- * produces the same output (it's a pure function of both), it's just that
- * unlike Drone position, this output legitimately depends on `state`, not
- * on `elapsedSimSeconds` alone. Has no dependency on React, Leaflet, or
- * wall-clock time — see `useSimulationClock` for that layer, which is
- * responsible for actually feeding each tick's result back in as the next
- * tick's `state` so this memory persists.
+ * a closed-form, memoryless function of `elapsedSimSeconds` alone while
+ * `'patrolling'` (patrol parameters, unchanging), so calling this with the
+ * same `state` and `elapsedSimSeconds` always returns identical positions
+ * no matter how many times or in what order it's called for a Drone that
+ * stays `'patrolling'` throughout (see the determinism tests in
+ * `advanceSimulation.test.ts`). Event `status` and Drone `droneActivity`
+ * are, however, genuinely history-dependent — Detection is monotonic (see
+ * `eventWithDetectionApplied`) and a dispatched Drone's investigation has a
+ * start time and duration (see `activityAfterInvestigationExpiry`) — so
+ * this reads `state.events`/`state.droneActivity` as memory; the same
+ * `state` + `elapsedSimSeconds` pair still always produces the same output
+ * (it's a pure function of both), it's just that this output legitimately
+ * depends on `state`, not on `elapsedSimSeconds` alone. Has no dependency
+ * on React, Leaflet, or wall-clock time — see `useSimulationClock` for that
+ * layer, which is responsible for actually feeding each tick's result back
+ * in as the next tick's `state` so this memory persists.
  */
 export function advanceSimulation(state: SimulationState, elapsedSimSeconds: number): SimulationState {
-  const dronePatrol: Record<string, DronePatrolState> = {}
-
-  for (const [droneId, patrol] of Object.entries(state.dronePatrol)) {
-    const angleRadians = patrol.phaseOffsetRadians + patrol.angularSpeedRadiansPerSecond * elapsedSimSeconds
-    dronePatrol[droneId] = {
-      ...patrol,
-      position: patrolPositionAtAngle(patrol.patrolCenter, patrol.patrolRadiusMeters, angleRadians),
-    }
-  }
+  const derived = deriveDronesAndEvents(
+    state.dronePatrol,
+    state.towerDetection,
+    state.scenarioEvents,
+    elapsedSimSeconds,
+    state.droneActivity,
+    state.events,
+  )
 
   return {
     elapsedSimSeconds,
-    dronePatrol,
+    dronePatrol: derived.dronePatrol,
+    droneActivity: derived.droneActivity,
     towerDetection: state.towerDetection,
     scenarioEvents: state.scenarioEvents,
-    events: eventsAt(state.scenarioEvents, elapsedSimSeconds, state.events, dronePatrol, state.towerDetection),
+    events: derived.events,
   }
 }

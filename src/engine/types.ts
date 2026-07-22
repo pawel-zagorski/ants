@@ -1,16 +1,23 @@
 import type { LatLng } from '../map/geo'
 import type { EventType, ScenarioEvent } from '../scenario/types'
+import type { DroneType } from '../world/types'
 
 /**
- * A single Drone's patrol loop and current derived position. `patrolCenter`,
- * `patrolRadiusMeters`, `angularSpeedRadiansPerSecond`,
+ * A single Drone's patrol loop and current derived position. `droneType`,
+ * `patrolCenter`, `patrolRadiusMeters`, `angularSpeedRadiansPerSecond`,
  * `phaseOffsetRadians`, and `detectionRadiusMeters` are fixed for the
  * lifetime of a {@link SimulationState} (derived once from the World in
  * `initializeSimulationState`) — only `position` changes as simulated time
- * advances. Future slices (dispatch, investigate) are expected to add
- * sibling fields here without disturbing these.
+ * advances. `position` is a closed-form function of `elapsedSimSeconds`
+ * alone *while patrolling*; once dispatched to investigate (see
+ * `DroneActivityState`), `advanceSimulation` instead derives it from the
+ * assigned Event's position and time-since-investigation-started — see
+ * `investigatePositionFor` in `advanceSimulation.ts`. `droneType` is what
+ * lets that investigate math pick hover (Quadrocopter) vs. circle
+ * (Fixed-Wing Drone).
  */
 export interface DronePatrolState {
+  droneType: DroneType
   patrolCenter: LatLng
   patrolRadiusMeters: number
   angularSpeedRadiansPerSecond: number
@@ -18,6 +25,27 @@ export interface DronePatrolState {
   detectionRadiusMeters: number
   position: LatLng
 }
+
+/**
+ * A single Drone's current dispatch/investigate activity (issue F), kept as
+ * a sibling `Record<droneId, DroneActivityState>` on {@link SimulationState}
+ * rather than folded into {@link DronePatrolState}, since it's
+ * history-dependent (like `EventRuntimeState.status`) rather than a
+ * closed-form function of absolute time alone. `'patrolling'` is the
+ * default/steady state. `'investigating'` additionally carries which Event
+ * it was dispatched to (`assignedEventId`) and when that investigation
+ * began (`investigationStartedAtSimSeconds`, an absolute
+ * `elapsedSimSeconds` value) — together these are enough for
+ * `advanceSimulation` to compute both "how long has this Drone been
+ * investigating" (to know when to revert to `'patrolling'`) and its
+ * hover/circle position. Deliberately an extensible union rather than a
+ * boolean flag: issue G's battery/endurance telemetry is expected to add
+ * further modes (e.g. `'returningToBase'`, `'charging'`) without a breaking
+ * change here.
+ */
+export type DroneActivityState =
+  | { mode: 'patrolling' }
+  | { mode: 'investigating'; assignedEventId: string; investigationStartedAtSimSeconds: number }
 
 /**
  * A Tower's fixed position and detection radius, carried through
@@ -64,22 +92,27 @@ export interface EventRuntimeState {
 
 /**
  * The engine's full serializable state: every Drone's patrol loop and
- * derived position keyed by Drone id, every Tower's fixed detection data
- * keyed by Tower id, every currently-spawned Event keyed by Event id, plus
- * the simulated time it was last computed for. `scenarioEvents` is the
+ * derived position keyed by Drone id, every Drone's dispatch/investigate
+ * activity keyed by Drone id, every Tower's fixed detection data keyed by
+ * Tower id, every currently-spawned Event keyed by Event id, plus the
+ * simulated time it was last computed for. `scenarioEvents` is the
  * Scenario's full, unchanging Event script (carried through unmodified from
  * `initializeSimulationState`, mirroring how each Drone's patrol parameters
  * are carried through) — it's what `advanceSimulation` re-derives `events`
- * from on every call. Unlike Drone position (a closed-form function of
- * absolute `elapsedSimSeconds` alone), an Event's `status` legitimately
- * depends on history: `advanceSimulation` reads the incoming `events[id]`
- * from this same state as memory for its sticky-status merge, so it never
- * un-detects an Event a Drone has since flown away from. Contains no
- * reference to React/Leaflet/wall-clock time — see `advanceSimulation`.
+ * from on every call. Unlike Drone position while patrolling (a closed-form
+ * function of absolute `elapsedSimSeconds` alone), an Event's `status` and
+ * a Drone's `droneActivity` legitimately depend on history:
+ * `advanceSimulation` reads the incoming `events[id]`/`droneActivity[id]`
+ * from this same state as memory — for Events, so it never un-detects one a
+ * Drone has since flown away from (sticky status); for Drones, so
+ * "how long has this Drone been investigating" and "which Drone is already
+ * unavailable" can be computed tick-over-tick. Contains no reference to
+ * React/Leaflet/wall-clock time — see `advanceSimulation`.
  */
 export interface SimulationState {
   elapsedSimSeconds: number
   dronePatrol: Record<string, DronePatrolState>
+  droneActivity: Record<string, DroneActivityState>
   towerDetection: Record<string, TowerDetectionState>
   scenarioEvents: ScenarioEvent[]
   events: Record<string, EventRuntimeState>

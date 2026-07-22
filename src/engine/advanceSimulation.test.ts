@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { advanceSimulation, initializeSimulationState } from './advanceSimulation'
+import { INVESTIGATION_DURATION_SIM_SECONDS } from './dispatch'
 import { haversineDistanceMeters } from '../test/haversineDistanceMeters'
 import { createWorldFixture } from '../test/worldFixtures'
 import type { Scenario } from '../scenario/types'
@@ -450,5 +451,264 @@ describe('Detection reproducibility', () => {
     expect(runA.events['fire-1'].detectedByAssetId).toBe('tower-1')
     expect(runA.events['tree-1'].status).toBe('detected')
     expect(runA.events['tree-1'].detectedByAssetId).toBe('quadrocopter-1')
+  })
+})
+
+describe('Drone dispatch/investigate behavior (issue F)', () => {
+  // A Tower sitting right on top of the Fire Event so Detection happens
+  // regardless of either Drone's position — isolates "which Drone gets
+  // dispatched" from "which asset made the Detection".
+  const eventPosition = { lat: 64.55, lng: 26.25 }
+  const towerAtEvent: World['towers'][number] = {
+    id: 'tower-1',
+    type: 'Tower',
+    position: eventPosition,
+    detectionRadiusMeters: 10,
+  }
+
+  function worldWithTwoStationaryDrones(): World {
+    return createWorldFixture({
+      towers: [towerAtEvent],
+      baseStations: [
+        { id: 'base-near', type: 'BaseStation', position: { lat: 64.5505, lng: 26.25 } }, // ~55m from the Event
+        { id: 'base-far', type: 'BaseStation', position: { lat: 64.65, lng: 26.25 } }, // ~11.1km from the Event
+      ],
+      drones: [
+        {
+          id: 'drone-far',
+          type: 'Quadrocopter',
+          position: { lat: 64.65, lng: 26.25 },
+          homeBaseStationId: 'base-far',
+          patrolRadiusMeters: 1,
+          patrolSpeedMetersPerSecond: 0,
+        },
+        {
+          id: 'drone-near',
+          type: 'Quadrocopter',
+          position: { lat: 64.5505, lng: 26.25 },
+          homeBaseStationId: 'base-near',
+          patrolRadiusMeters: 1,
+          patrolSpeedMetersPerSecond: 0,
+        },
+      ],
+    })
+  }
+
+  function fireScenario(): Scenario {
+    return { events: [{ id: 'fire-1', type: 'Fire', position: eventPosition, spawnAtSimSeconds: 0 }] }
+  }
+
+  it('dispatches exactly one eligible Drone — the nearest available one — on a new Detection', () => {
+    const state = advanceSimulation(initializeSimulationState(worldWithTwoStationaryDrones(), fireScenario()), 0)
+
+    expect(state.events['fire-1'].status).toBe('detected')
+    expect(state.droneActivity['drone-near']).toMatchObject({ mode: 'investigating', assignedEventId: 'fire-1' })
+    expect(state.droneActivity['drone-far']).toEqual({ mode: 'patrolling' })
+  })
+
+  it('moves the dispatched Drone toward (onto) the Event position, away from its patrol loop', () => {
+    const state = advanceSimulation(initializeSimulationState(worldWithTwoStationaryDrones(), fireScenario()), 0)
+
+    expect(state.dronePatrol['drone-near'].position).toEqual(eventPosition)
+  })
+
+  it('holds a dispatched Quadrocopter exactly over the Event position for the whole investigation', () => {
+    let state = initializeSimulationState(worldWithTwoStationaryDrones(), fireScenario())
+
+    for (let elapsedSimSeconds = 0; elapsedSimSeconds <= INVESTIGATION_DURATION_SIM_SECONDS - 1; elapsedSimSeconds += 5) {
+      state = advanceSimulation(state, elapsedSimSeconds)
+      expect(state.dronePatrol['drone-near'].position).toEqual(eventPosition)
+      expect(state.droneActivity['drone-near']).toMatchObject({ mode: 'investigating', assignedEventId: 'fire-1' })
+    }
+  })
+
+  it('circles a dispatched Fixed-Wing Drone around the Event instead of hovering, since it cannot hover', () => {
+    const world = createWorldFixture({
+      towers: [towerAtEvent],
+      baseStations: [{ id: 'base-near', type: 'BaseStation', position: { lat: 64.5505, lng: 26.25 } }],
+      drones: [
+        {
+          id: 'fixed-wing-1',
+          type: 'FixedWingDrone',
+          position: { lat: 64.5505, lng: 26.25 },
+          homeBaseStationId: 'base-near',
+          patrolRadiusMeters: 1,
+          patrolSpeedMetersPerSecond: 0,
+        },
+      ],
+    })
+
+    let state = initializeSimulationState(world, fireScenario())
+    state = advanceSimulation(state, 0)
+    expect(state.droneActivity['fixed-wing-1']).toMatchObject({ mode: 'investigating', assignedEventId: 'fire-1' })
+    const positionAtDispatch = state.dronePatrol['fixed-wing-1'].position
+
+    state = advanceSimulation(state, 5)
+    const positionFiveSecondsIn = state.dronePatrol['fixed-wing-1'].position
+
+    // Still investigating the same Event, but visibly circling rather than
+    // sitting still — a Fixed-Wing Drone cannot hover.
+    expect(state.droneActivity['fixed-wing-1']).toMatchObject({ mode: 'investigating', assignedEventId: 'fire-1' })
+    expect(positionFiveSecondsIn).not.toEqual(positionAtDispatch)
+    expect(positionFiveSecondsIn).not.toEqual(eventPosition)
+    expect(haversineDistanceMeters(eventPosition, positionFiveSecondsIn)).toBeLessThan(1000)
+  })
+
+  it('returns the Drone to its normal patrol behavior once the investigation interval elapses', () => {
+    // A real (non-degenerate) patrol loop for the dispatched Drone, so
+    // "resumed patrolling" is distinguishable from "still hovering at the
+    // Event" — compared against an undisturbed twin World with no Scenario
+    // at all (so it never gets dispatched) as the independent expectation.
+    const baseStations: World['baseStations'] = [
+      { id: 'base-near', type: 'BaseStation', position: { lat: 64.5505, lng: 26.25 } },
+    ]
+    const dispatchedDrone: World['drones'][number] = {
+      id: 'drone-near',
+      type: 'Quadrocopter',
+      position: { lat: 64.5505, lng: 26.25 },
+      homeBaseStationId: 'base-near',
+      patrolRadiusMeters: 250,
+      patrolSpeedMetersPerSecond: 8,
+    }
+    const world = createWorldFixture({ towers: [towerAtEvent], baseStations, drones: [dispatchedDrone] })
+    const undisturbedTwin = createWorldFixture({ towers: [], baseStations, drones: [dispatchedDrone] })
+
+    let state = initializeSimulationState(world, fireScenario())
+    for (let elapsedSimSeconds = 0; elapsedSimSeconds <= INVESTIGATION_DURATION_SIM_SECONDS; elapsedSimSeconds += 1) {
+      state = advanceSimulation(state, elapsedSimSeconds)
+    }
+
+    expect(state.droneActivity['drone-near']).toEqual({ mode: 'patrolling' })
+
+    const afterReturn = advanceSimulation(state, INVESTIGATION_DURATION_SIM_SECONDS + 40)
+    const expectedUndisturbedPosition = advanceSimulation(
+      initializeSimulationState(undisturbedTwin, { events: [] }),
+      INVESTIGATION_DURATION_SIM_SECONDS + 40,
+    ).dronePatrol['drone-near'].position
+
+    expect(afterReturn.dronePatrol['drone-near'].position).toEqual(expectedUndisturbedPosition)
+  })
+
+  it('leaves a Detection standing with no dispatch (and no crash) when no Drone is available', () => {
+    const world = createWorldFixture({
+      towers: [
+        towerAtEvent,
+        { id: 'tower-2', type: 'Tower', position: { lat: 64.6, lng: 26.3 }, detectionRadiusMeters: 10 },
+      ],
+      drones: [
+        {
+          id: 'only-drone',
+          type: 'Quadrocopter',
+          position: { lat: 64.5505, lng: 26.25 },
+          homeBaseStationId: 'base-1',
+          patrolRadiusMeters: 1,
+          patrolSpeedMetersPerSecond: 0,
+        },
+      ],
+    })
+    const scenario: Scenario = {
+      events: [
+        { id: 'fire-1', type: 'Fire', position: eventPosition, spawnAtSimSeconds: 0 },
+        { id: 'fire-2', type: 'Fire', position: { lat: 64.6, lng: 26.3 }, spawnAtSimSeconds: 0 },
+      ],
+    }
+
+    expect(() => advanceSimulation(initializeSimulationState(world, scenario), 0)).not.toThrow()
+    const state = advanceSimulation(initializeSimulationState(world, scenario), 0)
+
+    // Deterministic id order means fire-1 claims the only Drone; fire-2
+    // still stands Detected with no Drone assigned.
+    expect(state.events['fire-1'].status).toBe('detected')
+    expect(state.events['fire-2'].status).toBe('detected')
+    expect(state.droneActivity['only-drone']).toMatchObject({ assignedEventId: 'fire-1' })
+  })
+
+  it('does not retry dispatch on a later tick for an Event whose one dispatch opportunity found no Drone available', () => {
+    // The only Drone's patrol loop is centered right on an earlier, unrelated
+    // Event, so it's already investigating that Event at the moment fire-1
+    // is Detected — fire-1's one dispatch opportunity finds no Drone free.
+    const earlierEventPosition = { lat: 64.7, lng: 26.4 }
+    const world = createWorldFixture({
+      towers: [towerAtEvent],
+      baseStations: [{ id: 'base-1', type: 'BaseStation', position: earlierEventPosition }],
+      drones: [
+        {
+          id: 'only-drone',
+          type: 'Quadrocopter',
+          position: earlierEventPosition,
+          homeBaseStationId: 'base-1',
+          patrolRadiusMeters: 1,
+          patrolSpeedMetersPerSecond: 0,
+        },
+      ],
+    })
+    const scenario: Scenario = {
+      events: [
+        { id: 'earlier-event', type: 'FallenTree', position: earlierEventPosition, spawnAtSimSeconds: 0 },
+        { id: 'fire-1', type: 'Fire', position: eventPosition, spawnAtSimSeconds: 0 },
+      ],
+    }
+
+    let state = initializeSimulationState(world, scenario)
+    expect(state.droneActivity['only-drone']).toMatchObject({ assignedEventId: 'earlier-event' })
+    expect(state.events['fire-1'].status).toBe('detected')
+
+    // Advance well past the point the Drone finishes investigating
+    // earlier-event and becomes available again.
+    for (let elapsedSimSeconds = 1; elapsedSimSeconds <= INVESTIGATION_DURATION_SIM_SECONDS + 40; elapsedSimSeconds += 1) {
+      state = advanceSimulation(state, elapsedSimSeconds)
+    }
+
+    expect(state.droneActivity['only-drone']).toEqual({ mode: 'patrolling' })
+    // fire-1's one dispatch opportunity already passed with nothing
+    // available — it must not retroactively claim the now-free Drone.
+    expect(state.droneActivity['only-drone']).not.toMatchObject({ assignedEventId: 'fire-1' })
+  })
+
+  it('is deterministic: two Events newly Detected in the same tick are dispatched in a stable, id-sorted order', () => {
+    const world = createWorldFixture({
+      towers: [
+        { id: 'tower-a', type: 'Tower', position: { lat: 64.55, lng: 26.25 }, detectionRadiusMeters: 10 },
+        { id: 'tower-b', type: 'Tower', position: { lat: 64.5505, lng: 26.2505 }, detectionRadiusMeters: 10 },
+      ],
+      drones: [
+        {
+          id: 'only-drone',
+          type: 'Quadrocopter',
+          position: { lat: 64.55, lng: 26.2503 },
+          homeBaseStationId: 'base-1',
+          patrolRadiusMeters: 1,
+          patrolSpeedMetersPerSecond: 0,
+        },
+      ],
+    })
+    const scenario: Scenario = {
+      events: [
+        { id: 'event-a', type: 'Fire', position: { lat: 64.55, lng: 26.25 }, spawnAtSimSeconds: 0 },
+        { id: 'event-b', type: 'Fire', position: { lat: 64.5505, lng: 26.2505 }, spawnAtSimSeconds: 0 },
+      ],
+    }
+
+    const state = advanceSimulation(initializeSimulationState(world, scenario), 0)
+
+    expect(state.events['event-a'].status).toBe('detected')
+    expect(state.events['event-b'].status).toBe('detected')
+    // Lower id (event-a) is processed first and claims the only Drone.
+    expect(state.droneActivity['only-drone']).toMatchObject({ assignedEventId: 'event-a' })
+  })
+
+  it('is reproducible: replaying the same tick-by-tick sequence twice produces an identical dispatch/investigate timeline', () => {
+    function replay(): SimulationState {
+      let state = initializeSimulationState(worldWithTwoStationaryDrones(), fireScenario())
+      for (let elapsedSimSeconds = 1; elapsedSimSeconds <= INVESTIGATION_DURATION_SIM_SECONDS + 40; elapsedSimSeconds += 1) {
+        state = advanceSimulation(state, elapsedSimSeconds)
+      }
+      return state
+    }
+
+    const runA = replay()
+    const runB = replay()
+
+    expect(runA).toEqual(runB)
   })
 })

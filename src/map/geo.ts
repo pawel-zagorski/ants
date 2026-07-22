@@ -62,6 +62,22 @@ export function distanceMetersBetween(a: LatLng, b: LatLng): number {
   return Math.sqrt(dxKm * dxKm + dyKm * dyKm) * 1000
 }
 
+/**
+ * The point on a circle of `radiusMeters` centered on `center`, at the
+ * given absolute `angleRadians` (0 = due east, increasing counter-clockwise
+ * — plain `cos`/`sin` on top of {@link offsetLatLng}'s east/north
+ * displacement). Shared shape behind every closed-form circular-loop
+ * position the engine computes — a Drone's patrol loop and a Fixed-Wing
+ * Drone's investigate circle (see `engine/advanceSimulation.ts` and
+ * `engine/dispatch.ts`) — so that math lives in one place rather than
+ * being re-derived per loop kind.
+ */
+export function pointOnCircle(center: LatLng, radiusMeters: number, angleRadians: number): LatLng {
+  const dxMeters = radiusMeters * Math.cos(angleRadians)
+  const dyMeters = radiusMeters * Math.sin(angleRadians)
+  return offsetLatLng(center, dxMeters, dyMeters)
+}
+
 /** Reshapes a `LatLngBounds` into the `[lat, lng]` corner tuples react-leaflet expects. */
 export function toLeafletBounds(bounds: LatLngBounds): [[number, number], [number, number]] {
   return [

@@ -111,7 +111,7 @@ D
 
 ---
 
-## [ ] F — Drone dispatch/investigate behavior
+## [x] F — Drone dispatch/investigate behavior
 
 ### What to build
 
@@ -119,11 +119,11 @@ On a new Detection, the nearest available (not already investigating, sufficient
 
 ### Acceptance criteria
 
-- [ ] On a new Detection, exactly one eligible Drone (the nearest available one) transitions to "investigating" and moves toward the Event
-- [ ] A Quadrocopter investigating an Event holds position directly over it; a Fixed-Wing Drone circles around it
-- [ ] After the investigation interval elapses, the Drone returns to its normal patrol behavior from slice C
-- [ ] If no Drone is available (all investigating/insufficient battery), the Detection still stands but no dispatch occurs — no crash/undefined state
-- [ ] Unit tests cover dispatch selection (nearest eligible Drone), hover vs. circle behavior, and return-to-patrol
+- [x] On a new Detection, exactly one eligible Drone (the nearest available one) transitions to "investigating" and moves toward the Event
+- [x] A Quadrocopter investigating an Event holds position directly over it; a Fixed-Wing Drone circles around it
+- [x] After the investigation interval elapses, the Drone returns to its normal patrol behavior from slice C
+- [x] If no Drone is available (all investigating/insufficient battery), the Detection still stands but no dispatch occurs — no crash/undefined state
+- [x] Unit tests cover dispatch selection (nearest eligible Drone), hover vs. circle behavior, and return-to-patrol
 
 ### Blocked by
 

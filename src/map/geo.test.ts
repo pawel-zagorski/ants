@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { distanceMetersBetween, offsetLatLng, squareViewportBounds, toLeafletBounds } from './geo'
+import { distanceMetersBetween, offsetLatLng, pointOnCircle, squareViewportBounds, toLeafletBounds } from './geo'
 import { haversineDistanceMeters } from '../test/haversineDistanceMeters'
 
 describe('squareViewportBounds', () => {
@@ -91,6 +91,30 @@ describe('distanceMetersBetween', () => {
     const b = { lat: 64.7, lng: 26.2 }
 
     expect(distanceMetersBetween(a, b)).toBeCloseTo(distanceMetersBetween(b, a), -2)
+  })
+})
+
+describe('pointOnCircle', () => {
+  it('stays exactly radiusMeters away from the center at any angle', () => {
+    const center = { lat: 64.5, lng: 26.25 }
+    const radiusMeters = 250
+
+    for (const angleRadians of [0, Math.PI / 2, Math.PI, 3.7, -1.2]) {
+      const point = pointOnCircle(center, radiusMeters, angleRadians)
+      expect(haversineDistanceMeters(center, point)).toBeCloseTo(radiusMeters, -1)
+    }
+  })
+
+  it('places angle 0 due east of the center, matching offsetLatLng(center, radiusMeters, 0)', () => {
+    const center = { lat: 64.5, lng: 26.25 }
+
+    expect(pointOnCircle(center, 250, 0)).toEqual(offsetLatLng(center, 250, 0))
+  })
+
+  it('returns the same point for angles 2*PI apart', () => {
+    const center = { lat: 64.5, lng: 26.25 }
+
+    expect(pointOnCircle(center, 250, 1.1)).toEqual(pointOnCircle(center, 250, 1.1 + 2 * Math.PI))
   })
 })
 
