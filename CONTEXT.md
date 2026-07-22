@@ -57,7 +57,7 @@ The generic role either a Tower or a Base Station plays as a Datalink endpoint �
 _Avoid_: Node, ground station (use "Relay" to keep it distinct from "Base Station")
 
 **Datalink**:
-The always-visible, animated (marching-ants) line from a Drone to its nearest Relay, by straight-line distance, recomputed continuously as the Drone patrols. Distinct from a Base Station's docking/recharge role — a Datalink line can point to either a Tower or a Base Station, whichever is closer.
+The always-visible, animated (marching-ants) line from a Drone to its nearest Relay, by straight-line distance, recomputed continuously as the Drone patrols. Distinct from a Base Station's docking/recharge role — a Datalink line can point to either a Tower or a Base Station, whichever is closer. If the nearest Relay's distance exceeds the Drone's own `datalinkRangeMeters` (issue I), the line instead renders as a solid, non-animated red "out of range" state — the marching-ants animation stops rather than just being overlaid — signaling the Drone has patrolled beyond its own comms reach. Given Rokua's actual Tower/Base Station spacing this rarely or never triggers in the bundled scenarios' default patrol loops; it exists as an edge-case visual, not a normal-path one.
 _Avoid_: Link, connection line (use "Datalink" for this specific always-on nearest-Relay line)
 
 ### Events & Detection

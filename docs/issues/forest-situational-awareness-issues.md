@@ -310,7 +310,7 @@ I
 
 ---
 
-## [ ] M — Datalink out-of-range visual state
+## [x] M — Datalink out-of-range visual state
 
 ### Parent
 
@@ -322,9 +322,9 @@ Using issue I's `datalinkRangeMeters` and issue L's nearest-Relay Datalink line:
 
 ### Acceptance criteria
 
-- [ ] A Drone whose nearest-Relay distance is within its `datalinkRangeMeters` shows the normal animated dashed line (issue L, unchanged)
-- [ ] A Drone whose nearest-Relay distance exceeds its `datalinkRangeMeters` shows a solid red, non-animated line instead
-- [ ] Unit/component test forces both cases via a synthetic Drone position/`datalinkRangeMeters` fixture (doesn't rely on any bundled scenario actually triggering out-of-range)
+- [x] A Drone whose nearest-Relay distance is within its `datalinkRangeMeters` shows the normal animated dashed line (issue L, unchanged)
+- [x] A Drone whose nearest-Relay distance exceeds its `datalinkRangeMeters` shows a solid red, non-animated line instead
+- [x] Unit/component test forces both cases via a synthetic Drone position/`datalinkRangeMeters` fixture (doesn't rely on any bundled scenario actually triggering out-of-range)
 
 ### Blocked by
 

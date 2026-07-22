@@ -286,6 +286,20 @@ body,
   }
 }
 
+/* Out-of-range Datalink state (issue M) — a Drone whose distance to its
+   nearest Relay exceeds its own `datalinkRangeMeters` renders this class
+   *instead of* `.datalink-line`, never both: no `stroke-dasharray` (solid,
+   explicitly `none` rather than just omitted, so it can't inherit a dash
+   pattern from anywhere else) and no `animation`, so the marching-ants
+   motion actually stops rather than just being painted over in red. The red
+   stroke color itself comes from `DatalinkLine.tsx`'s `color` Polyline prop
+   (a Leaflet presentation attribute, not a CSS rule), matching how L's
+   comment documents `pathOptions`/className limitations on this renderer. */
+.datalink-line-out-of-range {
+  stroke-dasharray: none;
+  animation: none;
+}
+
 /* Ground Truth View toggle (issue D) — sits alongside the Simulation Clock panel. */
 .ground-truth-toggle {
   display: flex;

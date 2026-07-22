@@ -5,11 +5,9 @@ export interface DatalinkLineProps {
   drone: Drone
   relay: Relay
   /**
-   * The Drone's live straight-line distance to `relay` — unused by this
-   * issue's always-on marching-ants rendering, but kept as a prop (rather
-   * than recomputed here) so issue M's out-of-range visual state can
-   * compare it against `drone.datalinkRangeMeters` without changing this
-   * component's call site.
+   * The Drone's live straight-line distance to `relay` — compared against
+   * `drone.datalinkRangeMeters` (issue M) to decide between the normal
+   * animated-dashed state and the solid red out-of-range state.
    */
   distanceMeters: number
 }
@@ -36,17 +34,33 @@ export interface DatalinkLineProps {
  * `datalink-line-relay-*` classes carry no styling — they just make which
  * Drone/Relay a rendered line connects independently verifiable in the DOM
  * (issue L's acceptance criteria; also a plausible hook for issue M).
+ *
+ * Issue M: once `distanceMeters` exceeds `drone.datalinkRangeMeters`, the
+ * line switches to `.datalink-line-out-of-range` instead of `.datalink-line`
+ * — solid (no dash array) red, with the marching-ants `animation` not
+ * applied at all (an out-of-range line never carries the `.datalink-line`
+ * class, so it can't inherit the keyframe by accident). `color` is also
+ * passed as a direct `Polyline` prop rather than relying on the CSS class
+ * for the red stroke: Leaflet's SVG renderer writes `color`/`weight`/
+ * `dashArray` straight onto the rendered `<path>` as presentation
+ * attributes in `Path._updateStyle`, independent of the `pathOptions`
+ * class-application caveat noted above for `className`.
  */
-export function DatalinkLine({ drone, relay }: DatalinkLineProps) {
+export function DatalinkLine({ drone, relay, distanceMeters }: DatalinkLineProps) {
+  const inRange = distanceMeters <= drone.datalinkRangeMeters
+  const className = inRange
+    ? `datalink-line datalink-line-drone-${drone.id} datalink-line-relay-${relay.id}`
+    : `datalink-line-out-of-range datalink-line-drone-${drone.id} datalink-line-relay-${relay.id}`
+
   return (
     <Polyline
       positions={[
         [drone.position.lat, drone.position.lng],
         [relay.position.lat, relay.position.lng],
       ]}
-      className={`datalink-line datalink-line-drone-${drone.id} datalink-line-relay-${relay.id}`}
+      className={className}
       weight={2}
-      color="#2563eb"
+      color={inRange ? '#2563eb' : '#dc2626'}
       opacity={0.85}
     />
   )
