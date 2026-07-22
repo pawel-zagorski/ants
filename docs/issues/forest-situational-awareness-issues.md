@@ -6,7 +6,7 @@ Status legend: `[ ]` not started, `[~]` in progress, `[x]` done.
 
 ---
 
-## [ ] A — Project scaffold + base map
+## [x] A — Project scaffold + base map
 
 ### Parent
 
@@ -18,11 +18,11 @@ Set up the Vite + React + TypeScript project. Render a `react-leaflet` map using
 
 ### Acceptance criteria
 
-- [ ] `npm run dev` starts a working app showing a real, tiled map of the Rokua area
-- [ ] The default viewport covers roughly a 50×50km area around the center coordinates
-- [ ] The map can be panned and zoomed with the mouse/trackpad
-- [ ] Project has TypeScript strict mode, a lint config, and a test runner (e.g. Vitest) wired up and passing on an empty/smoke test
-- [ ] README explains how to install and run the dev server
+- [x] `npm run dev` starts a working app showing a real, tiled map of the Rokua area
+- [x] The default viewport covers roughly a 50×50km area around the center coordinates
+- [x] The map can be panned and zoomed with the mouse/trackpad
+- [x] Project has TypeScript strict mode, a lint config, and a test runner (e.g. Vitest) wired up and passing on an empty/smoke test
+- [x] README explains how to install and run the dev server
 
 ### Blocked by
 
