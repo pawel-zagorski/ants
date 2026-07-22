@@ -29,6 +29,17 @@ const detectedFire: EventRuntimeState = {
   detectedByAssetId: 'tower-1',
 }
 
+const resolvedFire: EventRuntimeState = {
+  id: 'event-4',
+  type: 'Fire',
+  position: { lat: 64.7, lng: 26.2 },
+  status: 'resolved',
+  spawnAtSimSeconds: 0,
+  durationSimSeconds: 600,
+  detectedByAssetId: 'tower-1',
+  detectedAtSimSeconds: 0,
+}
+
 function renderMarkers(events: Record<string, EventRuntimeState>, groundTruthViewEnabled: boolean) {
   return render(
     <MapContainer center={[64.5644, 26.4947]} zoom={9}>
@@ -78,5 +89,29 @@ describe('EventMarkers', () => {
 
     expect(document.querySelectorAll('.event-icon')).toHaveLength(1)
     expect(document.querySelector('.event-icon-fire')).not.toBeNull()
+  })
+})
+
+describe('EventMarkers Resolved Events (issue G)', () => {
+  it('renders a Resolved Event, visually distinct from Detected, in the default view', () => {
+    renderMarkers({ 'event-4': resolvedFire }, false)
+
+    const markers = document.querySelectorAll('.event-icon')
+    expect(markers).toHaveLength(1)
+    expect(markers[0]).toHaveClass('event-icon-resolved')
+    expect(markers[0]).not.toHaveClass('event-icon-detected')
+  })
+
+  it('keeps a Resolved Event visible (not removed) in Ground Truth View too', () => {
+    renderMarkers({ 'event-4': resolvedFire }, true)
+
+    expect(document.querySelectorAll('.event-icon')).toHaveLength(1)
+  })
+
+  it('gives Detected and Resolved Events distinct marker classes from each other', () => {
+    renderMarkers({ 'event-3': detectedFire, 'event-4': resolvedFire }, false)
+
+    expect(document.querySelectorAll('.event-icon-detected')).toHaveLength(1)
+    expect(document.querySelectorAll('.event-icon-resolved')).toHaveLength(1)
   })
 })

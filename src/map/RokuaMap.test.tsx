@@ -259,3 +259,118 @@ describe('RokuaMap Detection and fog-of-war default view (issue E)', () => {
     expect(panel).toHaveTextContent(/no fire event/i)
   })
 })
+
+describe('RokuaMap Drone/Base Station telemetry panels (issue G)', () => {
+  it("shows a Drone's full telemetry fields in its status panel", () => {
+    render(<RokuaMap world={world} scenario={emptyScenario} />)
+
+    fireEvent.click(document.querySelector('.asset-icon-quadrocopter') as Element)
+
+    const panel = screen.getByRole('dialog')
+    expect(panel).toHaveTextContent('State')
+    expect(panel).toHaveTextContent('Patrolling')
+    expect(panel).toHaveTextContent('Battery')
+    expect(panel).toHaveTextContent('Speed')
+    expect(panel).toHaveTextContent('Heading')
+    expect(panel).toHaveTextContent('Assigned Event')
+    expect(panel).toHaveTextContent('Flight Endurance Remaining')
+  })
+
+  it("shows a Base Station's docked/deployed Drone counts and Operational status in its status panel", () => {
+    render(<RokuaMap world={world} scenario={emptyScenario} />)
+
+    fireEvent.click(document.querySelector('.asset-icon-base-station') as Element)
+
+    const panel = screen.getByRole('dialog')
+    expect(panel).toHaveTextContent('Docked Drones')
+    expect(panel).toHaveTextContent('Deployed Drones')
+    expect(panel).toHaveTextContent('Operational Status')
+    expect(panel).toHaveTextContent('Operational')
+  })
+
+  it("live-updates an already-open Drone panel's position/telemetry as the Simulation Clock steps forward, with no need to re-click the marker", () => {
+    render(<RokuaMap world={world} scenario={emptyScenario} />)
+
+    fireEvent.click(document.querySelector('.asset-icon-quadrocopter') as Element)
+    const before = screen.getByRole('dialog').textContent
+
+    fireEvent.click(screen.getByRole('button', { name: 'Step' }))
+    const after = screen.getByRole('dialog').textContent
+
+    expect(after).not.toEqual(before)
+  })
+
+  it("live-updates an already-open Base Station panel's docked/deployed counts once one of its Drones is dispatched to investigate", () => {
+    const eventPosition = { lat: 64.55, lng: 26.25 }
+    const worldWithOneDrone: World = {
+      bounds: world.bounds,
+      towers: [{ id: 'tower-1', type: 'Tower', position: eventPosition, detectionRadiusMeters: 10 }],
+      baseStations: [{ id: 'base-1', type: 'BaseStation', position: { lat: 64.5505, lng: 26.25 } }],
+      drones: [
+        {
+          id: 'drone-1',
+          type: 'Quadrocopter',
+          position: { lat: 64.5505, lng: 26.25 },
+          homeBaseStationId: 'base-1',
+          patrolRadiusMeters: 1,
+          patrolSpeedMetersPerSecond: 0,
+        },
+      ],
+    }
+    // Spawns exactly at the Simulation Clock's Step increment (30 simulated
+    // seconds — see STEP_SIM_SECONDS in useSimulationClock.ts), so the
+    // Base Station panel can be opened *before* dispatch happens and its
+    // counts observed to change after a single Step, with no re-click.
+    const scenarioWithLaterFire: Scenario = {
+      events: [{ id: 'fire-1', type: 'Fire', position: eventPosition, spawnAtSimSeconds: 30 }],
+    }
+
+    render(<RokuaMap world={worldWithOneDrone} scenario={scenarioWithLaterFire} />)
+
+    fireEvent.click(document.querySelector('.asset-icon-base-station') as Element)
+    const dockedBefore = screen.getByText('Docked Drones').nextElementSibling
+    const deployedBefore = screen.getByText('Deployed Drones').nextElementSibling
+    expect(dockedBefore).toHaveTextContent('1')
+    expect(deployedBefore).toHaveTextContent('0')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Step' }))
+
+    const dockedAfter = screen.getByText('Docked Drones').nextElementSibling
+    const deployedAfter = screen.getByText('Deployed Drones').nextElementSibling
+    expect(dockedAfter).toHaveTextContent('0')
+    expect(deployedAfter).toHaveTextContent('1')
+  })
+
+  it("shows a dispatched Drone's status flip to Investigating (with its assigned Event id) once it starts investigating a new Detection", () => {
+    // A single-Drone World isolates "which Drone gets dispatched" from the
+    // telemetry assertion itself — it's necessarily this one.
+    const towerId = 'tower-1'
+    const eventPosition = { lat: 64.55, lng: 26.25 }
+    const worldWithOneDrone: World = {
+      bounds: world.bounds,
+      towers: [{ id: towerId, type: 'Tower', position: eventPosition, detectionRadiusMeters: 10 }],
+      baseStations: [{ id: 'base-1', type: 'BaseStation', position: { lat: 64.5505, lng: 26.25 } }],
+      drones: [
+        {
+          id: 'drone-1',
+          type: 'Quadrocopter',
+          position: { lat: 64.5505, lng: 26.25 },
+          homeBaseStationId: 'base-1',
+          patrolRadiusMeters: 1,
+          patrolSpeedMetersPerSecond: 0,
+        },
+      ],
+    }
+    const fireScenario: Scenario = {
+      events: [{ id: 'fire-1', type: 'Fire', position: eventPosition, spawnAtSimSeconds: 0 }],
+    }
+
+    render(<RokuaMap world={worldWithOneDrone} scenario={fireScenario} />)
+
+    fireEvent.click(document.querySelector('.asset-icon-quadrocopter') as Element)
+
+    const panel = screen.getByRole('dialog')
+    expect(panel).toHaveTextContent('Investigating')
+    expect(panel).toHaveTextContent('fire-1')
+  })
+})

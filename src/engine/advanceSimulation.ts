@@ -123,32 +123,67 @@ function detectingAssetIdFor(
 }
 
 /**
+ * Applies this tick's Resolution check (issue G) to an already-`'detected'`
+ * `event`: per the PRD's Event model Implementation Decision, resolution
+ * happens after an optional scenario-defined `durationSimSeconds` elapses
+ * *post-Detection*, so the clock counted here starts at
+ * `event.detectedAtSimSeconds`, not `event.spawnAtSimSeconds`. An Event
+ * with no `durationSimSeconds` never resolves; an Event that isn't (yet)
+ * `'detected'` — still `'undetected'`, or already `'resolved'` — passes
+ * through unchanged, keeping this (like Detection) monotonic and
+ * forward-only.
+ */
+function eventWithResolutionApplied(event: EventRuntimeState, elapsedSimSeconds: number): EventRuntimeState {
+  if (
+    event.status === 'detected' &&
+    event.durationSimSeconds !== undefined &&
+    event.detectedAtSimSeconds !== undefined &&
+    elapsedSimSeconds - event.detectedAtSimSeconds >= event.durationSimSeconds
+  ) {
+    return { ...event, status: 'resolved' }
+  }
+
+  return event
+}
+
+/**
  * Applies this tick's Detection check to a freshly-derived `event`, using
  * `previousEventState` — this same Event's entry in the *incoming*
  * `SimulationState.events`, if any — as memory. Detection is monotonic
  * (`CONTEXT.md`: Undetected -> Detected -> Resolved, never backward), so
  * once `previousEventState.status` has left `'undetected'` it's carried
- * forward unchanged rather than re-derived from this tick's asset
- * positions — this is what keeps an Event Detected after the Drone that
- * found it flies back out of range. Only an Event that's still
- * `'undetected'` (including newly-spawned ones, which have no
- * `previousEventState` yet) is checked against the current tick's Tower
- * and Drone positions.
+ * forward (along with its sticky `detectedByAssetId`/`detectedAtSimSeconds`)
+ * rather than re-derived from this tick's asset positions — this is what
+ * keeps an Event Detected after the Drone that found it flies back out of
+ * range. Only an Event that's still `'undetected'` (including
+ * newly-spawned ones, which have no `previousEventState` yet) is checked
+ * against the current tick's Tower and Drone positions. Either way, the
+ * result is run through {@link eventWithResolutionApplied} before being
+ * returned, so a newly-`'detected'` Event (whose `durationSimSeconds`
+ * happens to be `0`) and a long-since-`'detected'` one are both checked for
+ * resolution on the same tick.
  */
 function eventWithDetectionApplied(
   event: EventRuntimeState,
   previousEventState: EventRuntimeState | undefined,
+  elapsedSimSeconds: number,
   dronePatrol: Record<string, DronePatrolState>,
   towerDetection: Record<string, TowerDetectionState>,
 ): EventRuntimeState {
   if (previousEventState && previousEventState.status !== 'undetected') {
-    return {
-      ...event,
-      status: previousEventState.status,
-      ...(previousEventState.detectedByAssetId !== undefined
-        ? { detectedByAssetId: previousEventState.detectedByAssetId }
-        : {}),
-    }
+    return eventWithResolutionApplied(
+      {
+        ...event,
+        status: previousEventState.status,
+        ...(previousEventState.detectedByAssetId !== undefined
+          ? { detectedByAssetId: previousEventState.detectedByAssetId }
+          : {}),
+        ...(previousEventState.detectedAtSimSeconds !== undefined
+          ? { detectedAtSimSeconds: previousEventState.detectedAtSimSeconds }
+          : {}),
+      },
+      elapsedSimSeconds,
+    )
   }
 
   const detectingAssetId = detectingAssetIdFor(event, dronePatrol, towerDetection)
@@ -156,7 +191,10 @@ function eventWithDetectionApplied(
     return event
   }
 
-  return { ...event, status: 'detected', detectedByAssetId: detectingAssetId }
+  return eventWithResolutionApplied(
+    { ...event, status: 'detected', detectedByAssetId: detectingAssetId, detectedAtSimSeconds: elapsedSimSeconds },
+    elapsedSimSeconds,
+  )
 }
 
 /**
@@ -185,7 +223,7 @@ function eventsAt(
   const events: Record<string, EventRuntimeState> = {}
 
   for (const [id, event] of Object.entries(spawnedEventsAt(scenarioEvents, elapsedSimSeconds))) {
-    events[id] = eventWithDetectionApplied(event, incomingEvents[id], dronePatrol, towerDetection)
+    events[id] = eventWithDetectionApplied(event, incomingEvents[id], elapsedSimSeconds, dronePatrol, towerDetection)
   }
 
   return events
@@ -218,6 +256,19 @@ function activityAfterInvestigationExpiry(
 }
 
 /**
+ * A patrolling Drone's absolute angle (radians) around its patrol loop at
+ * `elapsedSimSeconds` — the closed-form `phaseOffsetRadians +
+ * angularSpeedRadiansPerSecond * elapsedSimSeconds` shared by
+ * `positionForActivity` (this file) and the issue G telemetry helpers in
+ * `engine/telemetry.ts` (speed/heading are both derived from this same
+ * angle), so the two stay in agreement rather than re-deriving it
+ * separately.
+ */
+export function patrolAngleRadiansAt(patrol: DronePatrolState, elapsedSimSeconds: number): number {
+  return patrol.phaseOffsetRadians + patrol.angularSpeedRadiansPerSecond * elapsedSimSeconds
+}
+
+/**
  * A Drone's position at `elapsedSimSeconds` given its current `activity`:
  * its normal closed-form patrol-loop position while `'patrolling'` (slice
  * C, unchanged), or — while `'investigating'` — a hover/circle position
@@ -245,7 +296,7 @@ function positionForActivity(
     }
   }
 
-  const angleRadians = patrol.phaseOffsetRadians + patrol.angularSpeedRadiansPerSecond * elapsedSimSeconds
+  const angleRadians = patrolAngleRadiansAt(patrol, elapsedSimSeconds)
   return pointOnCircle(patrol.patrolCenter, patrol.patrolRadiusMeters, angleRadians)
 }
 

@@ -237,6 +237,14 @@ body,
   outline-offset: 2px;
 }
 
+/* A Resolved Event (issue G) stays visible, greyed out, rather than being
+   removed — visually distinct from both an active Detected Event and a
+   dashed/faded Ground-Truth-only Undetected one. */
+.event-icon-resolved .event-icon-shape {
+  opacity: 0.4;
+  filter: grayscale(1);
+}
+
 /* Ground Truth View toggle (issue D) — sits alongside the Simulation Clock panel. */
 .ground-truth-toggle {
   position: absolute;

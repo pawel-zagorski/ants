@@ -131,7 +131,7 @@ E
 
 ---
 
-## [ ] G — Event resolution + rich status telemetry
+## [x] G — Event resolution + rich status telemetry
 
 ### What to build
 
@@ -139,11 +139,11 @@ Add automatic Event resolution: a Detected Event flips to `Resolved` after its s
 
 ### Acceptance criteria
 
-- [ ] An Event with a `durationSimSeconds` flips to `Resolved` at the correct simulated time and renders distinctly from `Detected`
-- [ ] An Event with no `durationSimSeconds` never auto-resolves
-- [ ] Drone status panel shows all telemetry fields listed above, live-updating while the clock runs
-- [ ] Base Station status panel shows docked vs. deployed Drone counts, live-updating
-- [ ] Unit tests cover the resolution timing logic
+- [x] An Event with a `durationSimSeconds` flips to `Resolved` at the correct simulated time and renders distinctly from `Detected`
+- [x] An Event with no `durationSimSeconds` never auto-resolves
+- [x] Drone status panel shows all telemetry fields listed above, live-updating while the clock runs
+- [x] Base Station status panel shows docked vs. deployed Drone counts, live-updating
+- [x] Unit tests cover the resolution timing logic
 
 ### Blocked by
 

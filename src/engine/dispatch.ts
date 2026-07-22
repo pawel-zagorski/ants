@@ -1,4 +1,4 @@
-import { distanceMetersBetween, pointOnCircle } from '../map/geo'
+import { distanceMetersBetween, pointOnCircle, tangentialHeadingDegrees, tangentialSpeedMetersPerSecond } from '../map/geo'
 import type { LatLng } from '../map/geo'
 import type { DroneType } from '../world/types'
 
@@ -79,4 +79,33 @@ export function investigatePositionFor(
 
   const angleRadians = FIXED_WING_CIRCLE_ANGULAR_SPEED_RADIANS_PER_SECOND * secondsSinceInvestigationStarted
   return pointOnCircle(eventPosition, FIXED_WING_CIRCLE_RADIUS_METERS, angleRadians)
+}
+
+/**
+ * A Drone's speed and heading while investigating (issue G telemetry),
+ * mirroring the hover-vs-circle split in {@link investigatePositionFor}: a
+ * hovering Quadrocopter has zero speed and no heading (a stationary craft
+ * has no direction of travel — `headingDegrees` is simply omitted rather
+ * than given an arbitrary value); a circling Fixed-Wing Drone's speed and
+ * heading are the same tangent-of-circle math as its investigate position,
+ * using this file's fixed circle radius/angular speed constants. Purely
+ * derived from `droneType` and `secondsSinceInvestigationStarted` — no new
+ * engine state.
+ */
+export function investigateMotionFor(
+  droneType: DroneType,
+  secondsSinceInvestigationStarted: number,
+): { speedMetersPerSecond: number; headingDegrees?: number } {
+  if (droneType === 'Quadrocopter') {
+    return { speedMetersPerSecond: 0 }
+  }
+
+  const angleRadians = FIXED_WING_CIRCLE_ANGULAR_SPEED_RADIANS_PER_SECOND * secondsSinceInvestigationStarted
+  return {
+    speedMetersPerSecond: tangentialSpeedMetersPerSecond(
+      FIXED_WING_CIRCLE_ANGULAR_SPEED_RADIANS_PER_SECOND,
+      FIXED_WING_CIRCLE_RADIUS_METERS,
+    ),
+    headingDegrees: tangentialHeadingDegrees(angleRadians, FIXED_WING_CIRCLE_ANGULAR_SPEED_RADIANS_PER_SECOND),
+  }
 }

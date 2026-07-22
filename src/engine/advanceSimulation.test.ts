@@ -712,3 +712,100 @@ describe('Drone dispatch/investigate behavior (issue F)', () => {
     expect(runA).toEqual(runB)
   })
 })
+
+describe('Event resolution (issue G)', () => {
+  const tower: World['towers'][number] = {
+    id: 'tower-1',
+    type: 'Tower',
+    position: { lat: 64.7, lng: 26.2 },
+    detectionRadiusMeters: 15000,
+  }
+  const worldWithTower: World = createWorldFixture({ towers: [tower] })
+
+  it('records detectedAtSimSeconds as the absolute elapsedSimSeconds an Event first becomes Detected', () => {
+    const scenario: Scenario = {
+      events: [{ id: 'fire-1', type: 'Fire', position: tower.position, spawnAtSimSeconds: 100, durationSimSeconds: 50 }],
+    }
+
+    const state = advanceSimulation(initializeSimulationState(worldWithTower, scenario), 137)
+
+    expect(state.events['fire-1'].status).toBe('detected')
+    expect(state.events['fire-1'].detectedAtSimSeconds).toBe(137)
+  })
+
+  it('flips a Detected Event to Resolved once durationSimSeconds has elapsed since Detection (not since spawn)', () => {
+    // Spawns at 100, but only actually gets Detected once the Tower "notices"
+    // it at elapsedSimSeconds 137 in this fixture (first tick checked) —
+    // durationSimSeconds must count from that Detection instant, not 100.
+    const scenario: Scenario = {
+      events: [{ id: 'fire-1', type: 'Fire', position: tower.position, spawnAtSimSeconds: 100, durationSimSeconds: 50 }],
+    }
+
+    let state = initializeSimulationState(worldWithTower, scenario)
+    state = advanceSimulation(state, 137)
+    expect(state.events['fire-1'].status).toBe('detected')
+    expect(state.events['fire-1'].detectedAtSimSeconds).toBe(137)
+
+    const justBeforeResolution = advanceSimulation(state, 137 + 50 - 1)
+    expect(justBeforeResolution.events['fire-1'].status).toBe('detected')
+
+    const atResolution = advanceSimulation(justBeforeResolution, 137 + 50)
+    expect(atResolution.events['fire-1'].status).toBe('resolved')
+  })
+
+  it('never resolves an Event with no durationSimSeconds, however long it stays Detected', () => {
+    const scenario: Scenario = {
+      events: [{ id: 'fire-1', type: 'Fire', position: tower.position, spawnAtSimSeconds: 0 }],
+    }
+
+    const state = advanceSimulation(initializeSimulationState(worldWithTower, scenario), 1_000_000)
+
+    expect(state.events['fire-1'].status).toBe('detected')
+  })
+
+  it('never resolves an Undetected Event, even past its durationSimSeconds window from spawn', () => {
+    // Far outside the Tower's range, so it never gets Detected at all.
+    const scenario: Scenario = {
+      events: [
+        { id: 'fire-1', type: 'Fire', position: { lat: 60, lng: 20 }, spawnAtSimSeconds: 0, durationSimSeconds: 10 },
+      ],
+    }
+
+    const state = advanceSimulation(initializeSimulationState(worldWithTower, scenario), 10_000)
+
+    expect(state.events['fire-1'].status).toBe('undetected')
+  })
+
+  it('keeps a Resolved Event Resolved (sticky, forward-only) even if re-checked on a later tick', () => {
+    const scenario: Scenario = {
+      events: [{ id: 'fire-1', type: 'Fire', position: tower.position, spawnAtSimSeconds: 0, durationSimSeconds: 10 }],
+    }
+
+    let state = initializeSimulationState(worldWithTower, scenario)
+    state = advanceSimulation(state, 10)
+    expect(state.events['fire-1'].status).toBe('resolved')
+
+    state = advanceSimulation(state, 20)
+    expect(state.events['fire-1'].status).toBe('resolved')
+  })
+
+  it('is deterministic: replaying the same tick sequence twice produces an identical resolution timeline', () => {
+    const scenario: Scenario = {
+      events: [{ id: 'fire-1', type: 'Fire', position: tower.position, spawnAtSimSeconds: 0, durationSimSeconds: 25 }],
+    }
+
+    function replay(): SimulationState {
+      let state = initializeSimulationState(worldWithTower, scenario)
+      for (let elapsedSimSeconds = 0; elapsedSimSeconds <= 60; elapsedSimSeconds += 1) {
+        state = advanceSimulation(state, elapsedSimSeconds)
+      }
+      return state
+    }
+
+    const runA = replay()
+    const runB = replay()
+
+    expect(runA).toEqual(runB)
+    expect(runA.events['fire-1'].status).toBe('resolved')
+  })
+})

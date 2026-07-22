@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { distanceMetersBetween, offsetLatLng, pointOnCircle, squareViewportBounds, toLeafletBounds } from './geo'
+import {
+  distanceMetersBetween,
+  offsetLatLng,
+  pointOnCircle,
+  squareViewportBounds,
+  tangentialHeadingDegrees,
+  tangentialSpeedMetersPerSecond,
+  toLeafletBounds,
+} from './geo'
 import { haversineDistanceMeters } from '../test/haversineDistanceMeters'
 
 describe('squareViewportBounds', () => {
@@ -115,6 +123,42 @@ describe('pointOnCircle', () => {
     const center = { lat: 64.5, lng: 26.25 }
 
     expect(pointOnCircle(center, 250, 1.1)).toEqual(pointOnCircle(center, 250, 1.1 + 2 * Math.PI))
+  })
+})
+
+describe('tangentialSpeedMetersPerSecond', () => {
+  it('multiplies angular speed by radius to get linear speed', () => {
+    expect(tangentialSpeedMetersPerSecond(0.1, 250)).toBeCloseTo(25, 10)
+  })
+
+  it('is always non-negative, regardless of the sign of angularSpeedRadiansPerSecond', () => {
+    expect(tangentialSpeedMetersPerSecond(-0.1, 250)).toBeCloseTo(25, 10)
+  })
+})
+
+describe('tangentialHeadingDegrees', () => {
+  it('heads due north (0°) at the east point of a counter-clockwise circle (angle 0)', () => {
+    expect(tangentialHeadingDegrees(0, 0.1)).toBeCloseTo(0, 6)
+  })
+
+  it('heads due west (270°) at the north point of a counter-clockwise circle (angle PI/2)', () => {
+    expect(tangentialHeadingDegrees(Math.PI / 2, 0.1)).toBeCloseTo(270, 6)
+  })
+
+  it('heads due south (180°) at the west point of a counter-clockwise circle (angle PI)', () => {
+    expect(tangentialHeadingDegrees(Math.PI, 0.1)).toBeCloseTo(180, 6)
+  })
+
+  it('reverses to the opposite heading when angularSpeedRadiansPerSecond is negative (clockwise)', () => {
+    expect(tangentialHeadingDegrees(0, -0.1)).toBeCloseTo(180, 6)
+  })
+
+  it('always returns a value in [0, 360)', () => {
+    for (const angleRadians of [0, 1, 2, 3, 4, 5, 6, -1, -5]) {
+      const heading = tangentialHeadingDegrees(angleRadians, 0.1)
+      expect(heading).toBeGreaterThanOrEqual(0)
+      expect(heading).toBeLessThan(360)
+    }
   })
 })
 

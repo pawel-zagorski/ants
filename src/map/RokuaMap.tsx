@@ -22,32 +22,54 @@ export interface RokuaMapProps {
 }
 
 /**
+ * Every clickable asset in `world`, in a stable flat list — the lookup
+ * table {@link RokuaMap} re-derives a fresh `Asset` from on every render
+ * (see `selectedAssetId` below), so an open status panel's fields (a
+ * Drone's live position/telemetry, issue G) stay current as the Simulation
+ * Clock advances, rather than freezing at whatever they were the tick the
+ * marker was clicked.
+ */
+function allAssets(world: World): Asset[] {
+  return [...world.towers, ...world.baseStations, ...world.drones]
+}
+
+/**
  * Base map shell: an OpenStreetMap-tiled, pannable/zoomable map over the
  * World's `bounds` (Rokua National Park by default — see
  * docs/prd/forest-situational-awareness.md), with its Towers, Base Stations,
  * and Drones rendered as clickable markers, plus the chosen Scenario's
  * spawned Events (issue D). Clicking an asset marker opens a status panel
- * with its basic identity fields, plus — for a Tower — its currently-tracked
- * Fire Event (issue E). The Simulation Clock (issue C) drives Drone patrol
- * movement, Event spawning, and Detection (issue E) — Towers and Base
- * Stations stay at their fixed `world` positions. The default ("fog of
- * war") view shows only Detected/Resolved Events; the Ground Truth View
- * toggle (off by default) additionally reveals Undetected ones,
- * faded/dashed.
+ * with its basic identity fields, plus per-kind rich telemetry: a Tower's
+ * currently-tracked Fire Event (issue E); a Drone's full telemetry and a
+ * Base Station's docked/deployed counts (issue G) — see `AssetPanel`. The
+ * Simulation Clock (issue C) drives Drone patrol movement, Event spawning,
+ * Detection (issue E), and Resolution (issue G) — Towers and Base Stations
+ * stay at their fixed `world` positions. The default ("fog of war") view
+ * shows only Detected/Resolved Events; the Ground Truth View toggle (off
+ * by default) additionally reveals Undetected ones, faded/dashed.
  */
 export function RokuaMap({ world, scenario }: RokuaMapProps) {
-  const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null)
+  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null)
   const [groundTruthViewEnabled, setGroundTruthViewEnabled] = useState(false)
   const clock = useSimulationClock(world, scenario)
   const liveWorld = useMemo(() => withDronePositions(world, clock.simulationState), [world, clock.simulationState])
+  // Re-derived every render (not stored as the selected object itself) so
+  // an open panel's fields track `liveWorld`/`clock.simulationState` as
+  // they change, rather than the stale snapshot from the click that opened it.
+  const selectedAsset = selectedAssetId ? allAssets(liveWorld).find((asset) => asset.id === selectedAssetId) ?? null : null
 
   return (
     <MapContainer bounds={toLeafletBounds(world.bounds)} className="rokua-map">
       <TileLayer url={OSM_TILE_URL} attribution={OSM_ATTRIBUTION} />
-      <AssetMarkers world={liveWorld} onSelect={setSelectedAsset} />
+      <AssetMarkers world={liveWorld} onSelect={(asset) => setSelectedAssetId(asset.id)} />
       <EventMarkers events={clock.simulationState.events} groundTruthViewEnabled={groundTruthViewEnabled} />
       {selectedAsset && (
-        <AssetPanel asset={selectedAsset} events={clock.simulationState.events} onClose={() => setSelectedAsset(null)} />
+        <AssetPanel
+          asset={selectedAsset}
+          simulationState={clock.simulationState}
+          drones={world.drones}
+          onClose={() => setSelectedAssetId(null)}
+        />
       )}
       <SimulationClockPanel clock={clock} />
       <GroundTruthToggle enabled={groundTruthViewEnabled} onChange={setGroundTruthViewEnabled} />

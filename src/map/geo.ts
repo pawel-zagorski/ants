@@ -78,6 +78,46 @@ export function pointOnCircle(center: LatLng, radiusMeters: number, angleRadians
   return offsetLatLng(center, dxMeters, dyMeters)
 }
 
+/**
+ * The instantaneous linear speed (meters/second) of a point moving along a
+ * circle of `radiusMeters` at `angularSpeedRadiansPerSecond` — magnitude
+ * only, direction-agnostic (see {@link tangentialHeadingDegrees} for
+ * direction). Shared by every Drone motion this engine models on a circle:
+ * a patrol loop (`engine/advanceSimulation.ts`) and a Fixed-Wing Drone's
+ * investigate circle (`engine/dispatch.ts`) — see `engine/telemetry.ts`
+ * (issue G), which is this function's only caller today.
+ */
+export function tangentialSpeedMetersPerSecond(angularSpeedRadiansPerSecond: number, radiusMeters: number): number {
+  return Math.abs(angularSpeedRadiansPerSecond) * radiusMeters
+}
+
+/**
+ * The compass heading (degrees, 0 = north, 90 = east, clockwise, in
+ * `[0, 360)`) of a point's direction of travel at `angleRadians` around a
+ * circle whose angle increases at `angularSpeedRadiansPerSecond` (see
+ * {@link pointOnCircle}'s angle convention: 0 = due east of center,
+ * increasing counter-clockwise). The velocity direction is the derivative
+ * of `pointOnCircle`'s position with respect to the angle, scaled by the
+ * sign of `angularSpeedRadiansPerSecond` (so a negative — clockwise —
+ * angular speed reverses the heading): `(-sin(angleRadians),
+ * cos(angleRadians))` in (east, north) meters, converted to a compass
+ * bearing. Every angular speed this engine actually produces today is
+ * positive (counter-clockwise), but this stays correct either way rather
+ * than silently assuming it. Used by `engine/telemetry.ts` (issue G) for a
+ * patrolling or investigating (Fixed-Wing) Drone's `headingDegrees`
+ * telemetry field — a hovering Quadrocopter has no heading and simply
+ * omits this field rather than calling it with `angularSpeedRadiansPerSecond`
+ * of `0` (which this function does not special-case).
+ */
+export function tangentialHeadingDegrees(angleRadians: number, angularSpeedRadiansPerSecond: number): number {
+  const directionSign = angularSpeedRadiansPerSecond < 0 ? -1 : 1
+  const eastComponent = -Math.sin(angleRadians) * directionSign
+  const northComponent = Math.cos(angleRadians) * directionSign
+  const headingRadians = Math.atan2(eastComponent, northComponent)
+  const headingDegrees = (headingRadians * 180) / Math.PI
+  return (headingDegrees + 360) % 360
+}
+
 /** Reshapes a `LatLngBounds` into the `[lat, lng]` corner tuples react-leaflet expects. */
 export function toLeafletBounds(bounds: LatLngBounds): [[number, number], [number, number]] {
   return [

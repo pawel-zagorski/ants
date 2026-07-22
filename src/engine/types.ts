@@ -64,9 +64,9 @@ export interface TowerDetectionState {
  * An Event's lifecycle, per `CONTEXT.md`: `Undetected → Detected →
  * Resolved`. Detection (issue E) is monotonic — once `'detected'`, an Event
  * never reverts to `'undetected'`, even if the detecting asset later moves
- * out of range (see `advanceSimulation`'s sticky-status merge). `'resolved'`
- * is not produced yet — that's issue G's concern; this type already
- * supports it so G won't need a breaking change here.
+ * out of range (see `advanceSimulation`'s sticky-status merge). Resolution
+ * (issue G) is likewise monotonic and forward-only — once `'resolved'`, an
+ * Event never reverts to `'detected'`.
  */
 export type EventStatus = 'undetected' | 'detected' | 'resolved'
 
@@ -75,10 +75,18 @@ export type EventStatus = 'undetected' | 'detected' | 'resolved'
  * (copied from the Scenario's {@link ScenarioEvent}) plus its current
  * lifecycle `status`. Only present in `SimulationState.events` once
  * `elapsedSimSeconds` has reached its `spawnAtSimSeconds` — see
- * `advanceSimulation`. `detectedByAssetId` is set the tick an Event first
- * flips to `'detected'` (the Tower or Drone id whose radius it fell within)
- * and then carried forward unchanged — it's what lets a Tower's status
- * panel show "which Fire Event am I currently tracking".
+ * `advanceSimulation`. `detectedByAssetId` and `detectedAtSimSeconds` are
+ * both set once, the tick an Event first flips to `'detected'` (the Tower
+ * or Drone id whose radius it fell within, and the absolute
+ * `elapsedSimSeconds` at that moment), and then carried forward unchanged —
+ * `detectedByAssetId` is what lets a Tower's status panel show "which Fire
+ * Event am I currently tracking"; `detectedAtSimSeconds` is what lets
+ * `advanceSimulation` know when `durationSimSeconds` (counted from
+ * Detection, not from spawn — see PRD "Event model" Implementation
+ * Decisions) has elapsed, flipping `status` to `'resolved'`. An Event with
+ * no `durationSimSeconds` never resolves; an `'undetected'` Event never
+ * resolves either (resolution only makes sense once something has actually
+ * Detected it).
  */
 export interface EventRuntimeState {
   id: string
@@ -88,6 +96,7 @@ export interface EventRuntimeState {
   spawnAtSimSeconds: number
   durationSimSeconds?: number
   detectedByAssetId?: string
+  detectedAtSimSeconds?: number
 }
 
 /**

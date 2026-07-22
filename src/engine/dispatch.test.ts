@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { investigatePositionFor, selectNearestAvailableDrone } from './dispatch'
+import { investigateMotionFor, investigatePositionFor, selectNearestAvailableDrone } from './dispatch'
 import { distanceMetersBetween } from '../map/geo'
 import type { LatLng } from '../map/geo'
 
@@ -56,5 +56,34 @@ describe('investigatePositionFor', () => {
     expect(investigatePositionFor('FixedWingDrone', eventPosition, 12.5)).toEqual(
       investigatePositionFor('FixedWingDrone', eventPosition, 12.5),
     )
+  })
+})
+
+describe('investigateMotionFor', () => {
+  it('reports zero speed and no heading for a hovering Quadrocopter', () => {
+    const motion = investigateMotionFor('Quadrocopter', 17)
+
+    expect(motion.speedMetersPerSecond).toBe(0)
+    expect(motion.headingDegrees).toBeUndefined()
+  })
+
+  it('reports non-zero speed and a defined heading for a circling Fixed-Wing Drone', () => {
+    const motion = investigateMotionFor('FixedWingDrone', 5)
+
+    expect(motion.speedMetersPerSecond).toBeGreaterThan(0)
+    expect(motion.headingDegrees).toBeGreaterThanOrEqual(0)
+    expect(motion.headingDegrees).toBeLessThan(360)
+  })
+
+  it("gives a Fixed-Wing Drone's investigate speed matching its circle's angular speed times radius", () => {
+    const motion = investigateMotionFor('FixedWingDrone', 0)
+
+    // Same fixed circle constants used by investigatePositionFor — verified
+    // independently via distance travelled over a short time interval.
+    const positionAt0 = investigatePositionFor('FixedWingDrone', { lat: 64.5, lng: 26.25 }, 0)
+    const positionAtDt = investigatePositionFor('FixedWingDrone', { lat: 64.5, lng: 26.25 }, 0.001)
+    const impliedSpeed = distanceMetersBetween(positionAt0, positionAtDt) / 0.001
+
+    expect(motion.speedMetersPerSecond).toBeCloseTo(impliedSpeed, 0)
   })
 })

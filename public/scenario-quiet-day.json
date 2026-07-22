@@ -4,7 +4,8 @@
       "id": "quiet-day-fallen-tree-1",
       "type": "FallenTree",
       "position": { "lat": 64.512, "lng": 26.27 },
-      "spawnAtSimSeconds": 30
+      "spawnAtSimSeconds": 30,
+      "durationSimSeconds": 60
     },
     {
       "id": "quiet-day-fallen-tree-2",
