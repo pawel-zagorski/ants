@@ -9,9 +9,10 @@
  * Event list) — that's why they live in this registry instead of inside
  * the file.
  *
- * "Quiet Day" is a placeholder for this slice (a couple of harmless Fallen
- * Tree events) — full authoring of it and the other two named scenarios
- * ("Wildfire Outbreak", "Hiker Intrusion") from the PRD is issue H.
+ * The three entries below are the PRD's Further Notes named Scenarios
+ * (issue H), each tuned against the default `world.json` roster — see
+ * `bundledScenarios.integration.test.ts` for the geometric proof that each
+ * one actually behaves as its description promises.
  */
 export interface BundledScenarioListing {
   id: string
@@ -24,7 +25,19 @@ export const BUNDLED_SCENARIOS: readonly BundledScenarioListing[] = [
   {
     id: 'quiet-day',
     name: 'Quiet Day',
-    description: 'Placeholder scenario: a couple of harmless Fallen Tree events, no Fire.',
+    description: 'A few harmless Fallen Tree reports, no Fire — most get noticed, one never does.',
     url: '/scenario-quiet-day.json',
+  },
+  {
+    id: 'wildfire-outbreak',
+    name: 'Wildfire Outbreak',
+    description: 'A Tower spots a Fire and dispatches a Drone to investigate before it resolves.',
+    url: '/scenario-wildfire-outbreak.json',
+  },
+  {
+    id: 'hiker-intrusion',
+    name: 'Hiker Intrusion',
+    description: 'A Person Sighting stays invisible until a patrolling Drone finally passes by.',
+    url: '/scenario-hiker-intrusion.json',
   },
 ]

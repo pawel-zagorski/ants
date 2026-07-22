@@ -2,6 +2,8 @@
 
 Local issue list (no issue tracker configured). Vertical slices ("tracer bullets") derived from [`docs/prd/forest-situational-awareness.md`](../prd/forest-situational-awareness.md), following `CONTEXT.md` vocabulary and the ADRs in `docs/adr/`. Publish/implement in order — each issue is blocked by the one before it.
 
+**All issues complete (A–H).** The three bundled example Scenarios ("Quiet Day", "Wildfire Outbreak", "Hiker Intrusion") are fully authored and verified against the default `world.json` — see `src/scenario/bundledScenarios.integration.test.ts`.
+
 Status legend: `[ ]` not started, `[~]` in progress, `[x]` done.
 
 ---
@@ -151,7 +153,7 @@ F
 
 ---
 
-## [ ] H — Author the three bundled example scenarios
+## [x] H — Author the three bundled example scenarios
 
 ### What to build
 
@@ -159,11 +161,11 @@ Replace the placeholder scenario from slice D with three fully authored, tuned s
 
 ### Acceptance criteria
 
-- [ ] All three scenarios load and run without errors against the default `world.json`
-- [ ] "Quiet Day" produces only Fallen Tree Detections, no Fire Detections
-- [ ] "Wildfire Outbreak" produces a Tower Detection of its Fire Event, followed by a Drone dispatch/investigate cycle
-- [ ] "Hiker Intrusion" Person Sighting is invisible in default (fog-of-war) view for a noticeable stretch, then gets Detected once a patrolling Drone comes into range — visually demonstrable by toggling Ground Truth View before/after
-- [ ] Scenario dropdown lists all three with descriptive names/labels
+- [x] All three scenarios load and run without errors against the default `world.json`
+- [x] "Quiet Day" produces only Fallen Tree Detections, no Fire Detections
+- [x] "Wildfire Outbreak" produces a Tower Detection of its Fire Event, followed by a Drone dispatch/investigate cycle
+- [x] "Hiker Intrusion" Person Sighting is invisible in default (fog-of-war) view for a noticeable stretch, then gets Detected once a patrolling Drone comes into range — visually demonstrable by toggling Ground Truth View before/after
+- [x] Scenario dropdown lists all three with descriptive names/labels
 
 ### Blocked by
 

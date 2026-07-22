@@ -1,17 +1,24 @@
 {
   "events": [
     {
-      "id": "quiet-day-fallen-tree-1",
+      "id": "quiet-day-fallen-tree-base1",
       "type": "FallenTree",
-      "position": { "lat": 64.512, "lng": 26.27 },
-      "spawnAtSimSeconds": 30,
+      "position": { "lat": 64.5, "lng": 26.254173 },
+      "spawnAtSimSeconds": 10,
       "durationSimSeconds": 60
     },
     {
-      "id": "quiet-day-fallen-tree-2",
+      "id": "quiet-day-fallen-tree-base2",
       "type": "FallenTree",
-      "position": { "lat": 64.635, "lng": 26.68 },
-      "spawnAtSimSeconds": 120
+      "position": { "lat": 64.621797, "lng": 26.7 },
+      "spawnAtSimSeconds": 60,
+      "durationSimSeconds": 90
+    },
+    {
+      "id": "quiet-day-fallen-tree-remote",
+      "type": "FallenTree",
+      "position": { "lat": 64.42, "lng": 26.0 },
+      "spawnAtSimSeconds": 30
     }
   ]
 }
