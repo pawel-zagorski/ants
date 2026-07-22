@@ -97,4 +97,9 @@ describe('orbitLapDurationSimSeconds', () => {
     expect(orbitLapDurationSimSeconds(300, 0)).toBe(Infinity)
     expect(orbitLapDurationSimSeconds(300, -5)).toBe(Infinity)
   })
+
+  it('is Infinity for zero or negative orbit radius (degenerate orbit — a Fire that has not yet grown past its ignition point cannot complete a lap)', () => {
+    expect(orbitLapDurationSimSeconds(0, 8)).toBe(Infinity)
+    expect(orbitLapDurationSimSeconds(-1, 8)).toBe(Infinity)
+  })
 })

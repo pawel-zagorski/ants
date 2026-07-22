@@ -1005,6 +1005,24 @@ describe('Fire orbit / Confirmed Shape (issue V)', () => {
     expect(muchLater.fires['fire-1'].confirmedAtSimSeconds).toBe(lastTickStillOrbitingAtSimSeconds)
   })
 
+  it('keeps a roundTrip Drone investigating even when dispatched at fire-ignition time (orbit radius = 0 at dispatch → zero-circumference lap must not be treated as instantly completed)', () => {
+    // Bug: orbitLapDurationSimSeconds(0, speed) = 0, so the very first tick
+    // after dispatch sees secondsSinceOrbitStarted > 0 = lapDuration and
+    // immediately returns the Drone to 'patrolling'. The fix: treat
+    // orbitRadiusMeters <= 0 the same as linearSpeedMetersPerSecond <= 0
+    // — a degenerate orbit that can never complete a lap returns Infinity.
+    const stateAtIgnition = advanceSimulation(
+      initializeSimulationState(worldWithOrbitingDrone(), towerDetectedFireScenario()),
+      0, // dispatch at the exact moment the Fire ignites → orbitRadiusMeters = 0
+    )
+    const dispatched = withManualFireDispatch(stateAtIgnition, 'drone-1', 'fire-1', 'roundTrip')
+    expect((dispatched.droneActivity['drone-1'] as { orbitRadiusMeters: number }).orbitRadiusMeters).toBe(0)
+
+    const nextTick = advanceSimulation(dispatched, 1)
+
+    expect(nextTick.droneActivity['drone-1']).toMatchObject({ mode: 'investigatingFire', assignedFireId: 'fire-1' })
+  })
+
   it('leaves a oneWay (One-Way Mission) Drone orbiting indefinitely, with no lap-based ending, keeping the Confirmed Shape live the whole time', () => {
     const dispatched = dispatchedState('oneWay')
     const orbitRadiusMeters = fireOrbitRadiusMetersAt(DISPATCH_AT_SIM_SECONDS, TEST_WIND)

@@ -86,7 +86,7 @@ export function orbitMotionFor(
  * never complete a lap, rather than this function dividing by zero.
  */
 export function orbitLapDurationSimSeconds(orbitRadiusMeters: number, linearSpeedMetersPerSecond: number): number {
-  if (linearSpeedMetersPerSecond <= 0) return Infinity
+  if (linearSpeedMetersPerSecond <= 0 || orbitRadiusMeters <= 0) return Infinity
   const circumferenceMeters = 2 * Math.PI * orbitRadiusMeters
   return circumferenceMeters / linearSpeedMetersPerSecond
 }
