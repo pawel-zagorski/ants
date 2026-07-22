@@ -17,7 +17,7 @@ const ICON_SIZE = 28
  * distinguishable at a glance and aren't accessibility-dependent on hue.
  */
 const ASSET_TYPE_ICON: Record<AssetType, { typeClassName: string; shapeClassName: string; label: string }> = {
-  Tower: { typeClassName: 'asset-icon-tower', shapeClassName: 'asset-icon-triangle', label: 'T' },
+  Tower: { typeClassName: 'asset-icon-tower', shapeClassName: 'asset-icon-tower-rook', label: 'T' },
   BaseStation: { typeClassName: 'asset-icon-base-station', shapeClassName: 'asset-icon-square', label: 'B' },
   Quadrocopter: { typeClassName: 'asset-icon-quadrocopter', shapeClassName: 'asset-icon-circle', label: 'Q' },
   FixedWingDrone: { typeClassName: 'asset-icon-fixed-wing-drone', shapeClassName: 'asset-icon-diamond', label: 'F' },

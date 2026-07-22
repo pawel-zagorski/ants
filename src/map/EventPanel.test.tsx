@@ -15,6 +15,12 @@ const detectedFallenTree: EventRuntimeState = {
   detectedAtSimSeconds: 45,
 }
 
+const detectedPersonSighting: EventRuntimeState = {
+  ...detectedFallenTree,
+  id: 'event-2',
+  type: 'PersonSighting',
+}
+
 const quadrocopter: Drone = {
   id: 'drone-1',
   type: 'Quadrocopter',
@@ -87,6 +93,42 @@ describe('EventPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
 
     expect(onClose).toHaveBeenCalledOnce()
+  })
+})
+
+describe('EventPanel card photo', () => {
+  it('shows a full-bleed (no-margin) Fallen Tree photo', () => {
+    render(
+      <EventPanel
+        event={detectedFallenTree}
+        simulationState={simulationStateFixture()}
+        drones={[]}
+        onSend={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+
+    const photo = screen.getByRole('img', { name: 'Fallen Tree' })
+    expect(photo).toHaveAttribute('src', '/img/fallen_tree.jpeg')
+    expect(photo).toHaveClass('asset-panel-photo')
+    expect(photo).not.toHaveClass('asset-panel-photo--margin')
+  })
+
+  it('shows a full-bleed (no-margin) Person Sighting photo', () => {
+    render(
+      <EventPanel
+        event={detectedPersonSighting}
+        simulationState={simulationStateFixture()}
+        drones={[]}
+        onSend={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+
+    const photo = screen.getByRole('img', { name: 'Person Sighting' })
+    expect(photo).toHaveAttribute('src', '/img/people_sighted.jpeg')
+    expect(photo).toHaveClass('asset-panel-photo')
+    expect(photo).not.toHaveClass('asset-panel-photo--margin')
   })
 })
 
