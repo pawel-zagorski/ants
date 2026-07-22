@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { RokuaMap } from './RokuaMap'
 import type { Scenario } from '../scenario/types'
+import { droneSpecFixture } from '../test/worldFixtures'
 import type { World } from '../world/types'
 
 const world: World = {
@@ -16,12 +17,14 @@ const world: World = {
       type: 'Quadrocopter',
       position: { lat: 64.502, lng: 26.252 },
       homeBaseStationId: 'base-1',
+      ...droneSpecFixture,
     },
     {
       id: 'drone-2',
       type: 'FixedWingDrone',
       position: { lat: 64.51, lng: 26.24 },
       homeBaseStationId: 'base-1',
+      ...droneSpecFixture,
     },
   ],
 }
@@ -312,6 +315,7 @@ describe('RokuaMap Drone/Base Station telemetry panels (issue G)', () => {
           type: 'Quadrocopter',
           position: { lat: 64.5505, lng: 26.25 },
           homeBaseStationId: 'base-1',
+          ...droneSpecFixture,
           patrolRadiusMeters: 1,
           patrolSpeedMetersPerSecond: 0,
         },
@@ -356,6 +360,7 @@ describe('RokuaMap Drone/Base Station telemetry panels (issue G)', () => {
           type: 'Quadrocopter',
           position: { lat: 64.5505, lng: 26.25 },
           homeBaseStationId: 'base-1',
+          ...droneSpecFixture,
           patrolRadiusMeters: 1,
           patrolSpeedMetersPerSecond: 0,
         },

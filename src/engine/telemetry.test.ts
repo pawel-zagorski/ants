@@ -1,14 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { INVESTIGATION_DURATION_SIM_SECONDS } from './dispatch'
-import {
-  DRONE_MAX_ENDURANCE_SIM_SECONDS,
-  baseStationCountsFor,
-  batteryPercentAt,
-  droneTelemetryFor,
-  remainingEnduranceSimSecondsAt,
-} from './telemetry'
+import { baseStationCountsFor, batteryPercentAt, droneTelemetryFor, remainingEnduranceSimSecondsAt } from './telemetry'
 import type { DroneActivityState, DronePatrolState } from './types'
 import type { Drone } from '../world/types'
+import { droneSpecFixture } from '../test/worldFixtures'
+
+/** A representative max endurance for tests that don't care about its exact value — 7200s = 2 simulated hours. */
+const MAX_ENDURANCE_SIM_SECONDS = 7200
 
 const patrollingQuadrocopter: DronePatrolState = {
   droneType: 'Quadrocopter',
@@ -29,23 +27,35 @@ const patrollingFixedWing: DronePatrolState = {
 
 describe('remainingEnduranceSimSecondsAt / batteryPercentAt', () => {
   it('starts at the full max endurance and 100% battery at elapsedSimSeconds 0', () => {
-    expect(remainingEnduranceSimSecondsAt(0)).toBe(DRONE_MAX_ENDURANCE_SIM_SECONDS)
-    expect(batteryPercentAt(0)).toBe(100)
+    expect(remainingEnduranceSimSecondsAt(0, MAX_ENDURANCE_SIM_SECONDS)).toBe(MAX_ENDURANCE_SIM_SECONDS)
+    expect(batteryPercentAt(0, MAX_ENDURANCE_SIM_SECONDS)).toBe(100)
   })
 
   it('decreases linearly as elapsedSimSeconds increases', () => {
-    expect(remainingEnduranceSimSecondsAt(DRONE_MAX_ENDURANCE_SIM_SECONDS / 2)).toBe(DRONE_MAX_ENDURANCE_SIM_SECONDS / 2)
-    expect(batteryPercentAt(DRONE_MAX_ENDURANCE_SIM_SECONDS / 2)).toBeCloseTo(50, 10)
+    expect(remainingEnduranceSimSecondsAt(MAX_ENDURANCE_SIM_SECONDS / 2, MAX_ENDURANCE_SIM_SECONDS)).toBe(
+      MAX_ENDURANCE_SIM_SECONDS / 2,
+    )
+    expect(batteryPercentAt(MAX_ENDURANCE_SIM_SECONDS / 2, MAX_ENDURANCE_SIM_SECONDS)).toBeCloseTo(50, 10)
   })
 
   it('never goes below zero remaining endurance / 0% battery, even long past max endurance', () => {
-    expect(remainingEnduranceSimSecondsAt(DRONE_MAX_ENDURANCE_SIM_SECONDS * 10)).toBe(0)
-    expect(batteryPercentAt(DRONE_MAX_ENDURANCE_SIM_SECONDS * 10)).toBe(0)
+    expect(remainingEnduranceSimSecondsAt(MAX_ENDURANCE_SIM_SECONDS * 10, MAX_ENDURANCE_SIM_SECONDS)).toBe(0)
+    expect(batteryPercentAt(MAX_ENDURANCE_SIM_SECONDS * 10, MAX_ENDURANCE_SIM_SECONDS)).toBe(0)
   })
 
-  it('is a pure, deterministic function of elapsedSimSeconds alone', () => {
-    expect(remainingEnduranceSimSecondsAt(1234)).toBe(remainingEnduranceSimSecondsAt(1234))
-    expect(batteryPercentAt(1234)).toBe(batteryPercentAt(1234))
+  it('is a pure, deterministic function of elapsedSimSeconds and maxEnduranceSimSeconds alone', () => {
+    expect(remainingEnduranceSimSecondsAt(1234, MAX_ENDURANCE_SIM_SECONDS)).toBe(
+      remainingEnduranceSimSecondsAt(1234, MAX_ENDURANCE_SIM_SECONDS),
+    )
+    expect(batteryPercentAt(1234, MAX_ENDURANCE_SIM_SECONDS)).toBe(batteryPercentAt(1234, MAX_ENDURANCE_SIM_SECONDS))
+  })
+
+  it('drains at a different rate for two Drones with different maxEnduranceSimSeconds (issue I: per-Drone endurance)', () => {
+    const shortEnduranceBatteryPercent = batteryPercentAt(1000, 2940)
+    const longEnduranceBatteryPercent = batteryPercentAt(1000, 9900)
+
+    expect(shortEnduranceBatteryPercent).not.toBe(longEnduranceBatteryPercent)
+    expect(shortEnduranceBatteryPercent).toBeLessThan(longEnduranceBatteryPercent)
   })
 })
 
@@ -53,7 +63,7 @@ describe('droneTelemetryFor — patrolling', () => {
   const patrollingActivity: DroneActivityState = { mode: 'patrolling' }
 
   it('reports state "patrolling", the current position, and no assigned Event', () => {
-    const telemetry = droneTelemetryFor(patrollingQuadrocopter, patrollingActivity, 100)
+    const telemetry = droneTelemetryFor(patrollingQuadrocopter, patrollingActivity, 100, MAX_ENDURANCE_SIM_SECONDS)
 
     expect(telemetry.state).toBe('patrolling')
     expect(telemetry.position).toEqual(patrollingQuadrocopter.position)
@@ -61,7 +71,7 @@ describe('droneTelemetryFor — patrolling', () => {
   })
 
   it('reports a non-zero speed derived from angularSpeedRadiansPerSecond * patrolRadiusMeters', () => {
-    const telemetry = droneTelemetryFor(patrollingQuadrocopter, patrollingActivity, 100)
+    const telemetry = droneTelemetryFor(patrollingQuadrocopter, patrollingActivity, 100, MAX_ENDURANCE_SIM_SECONDS)
 
     expect(telemetry.speedMetersPerSecond).toBeCloseTo(
       patrollingQuadrocopter.angularSpeedRadiansPerSecond * patrollingQuadrocopter.patrolRadiusMeters,
@@ -70,22 +80,22 @@ describe('droneTelemetryFor — patrolling', () => {
   })
 
   it('reports a defined heading while patrolling', () => {
-    const telemetry = droneTelemetryFor(patrollingQuadrocopter, patrollingActivity, 100)
+    const telemetry = droneTelemetryFor(patrollingQuadrocopter, patrollingActivity, 100, MAX_ENDURANCE_SIM_SECONDS)
 
     expect(telemetry.headingDegrees).toBeGreaterThanOrEqual(0)
     expect(telemetry.headingDegrees).toBeLessThan(360)
   })
 
   it('reports battery/endurance consistent with the standalone battery helpers', () => {
-    const telemetry = droneTelemetryFor(patrollingQuadrocopter, patrollingActivity, 500)
+    const telemetry = droneTelemetryFor(patrollingQuadrocopter, patrollingActivity, 500, MAX_ENDURANCE_SIM_SECONDS)
 
-    expect(telemetry.batteryPercent).toBe(batteryPercentAt(500))
-    expect(telemetry.remainingEnduranceSimSeconds).toBe(remainingEnduranceSimSecondsAt(500))
+    expect(telemetry.batteryPercent).toBe(batteryPercentAt(500, MAX_ENDURANCE_SIM_SECONDS))
+    expect(telemetry.remainingEnduranceSimSeconds).toBe(remainingEnduranceSimSecondsAt(500, MAX_ENDURANCE_SIM_SECONDS))
   })
 
   it('gives a Fixed-Wing Drone a higher patrol speed than a Quadrocopter with a smaller loop', () => {
-    const fixedWingTelemetry = droneTelemetryFor(patrollingFixedWing, patrollingActivity, 100)
-    const quadrocopterTelemetry = droneTelemetryFor(patrollingQuadrocopter, patrollingActivity, 100)
+    const fixedWingTelemetry = droneTelemetryFor(patrollingFixedWing, patrollingActivity, 100, MAX_ENDURANCE_SIM_SECONDS)
+    const quadrocopterTelemetry = droneTelemetryFor(patrollingQuadrocopter, patrollingActivity, 100, MAX_ENDURANCE_SIM_SECONDS)
 
     expect(fixedWingTelemetry.speedMetersPerSecond).toBeGreaterThan(quadrocopterTelemetry.speedMetersPerSecond)
   })
@@ -99,21 +109,21 @@ describe('droneTelemetryFor — investigating', () => {
   }
 
   it('reports state "investigating" and the assigned Event id', () => {
-    const telemetry = droneTelemetryFor(patrollingQuadrocopter, investigatingActivity, 110)
+    const telemetry = droneTelemetryFor(patrollingQuadrocopter, investigatingActivity, 110, MAX_ENDURANCE_SIM_SECONDS)
 
     expect(telemetry.state).toBe('investigating')
     expect(telemetry.assignedEventId).toBe('fire-1')
   })
 
   it('reports zero speed and no heading for a hovering (investigating) Quadrocopter', () => {
-    const telemetry = droneTelemetryFor(patrollingQuadrocopter, investigatingActivity, 110)
+    const telemetry = droneTelemetryFor(patrollingQuadrocopter, investigatingActivity, 110, MAX_ENDURANCE_SIM_SECONDS)
 
     expect(telemetry.speedMetersPerSecond).toBe(0)
     expect(telemetry.headingDegrees).toBeUndefined()
   })
 
   it('reports non-zero speed and a defined heading for a circling (investigating) Fixed-Wing Drone', () => {
-    const telemetry = droneTelemetryFor(patrollingFixedWing, investigatingActivity, 110)
+    const telemetry = droneTelemetryFor(patrollingFixedWing, investigatingActivity, 110, MAX_ENDURANCE_SIM_SECONDS)
 
     expect(telemetry.speedMetersPerSecond).toBeGreaterThan(0)
     expect(telemetry.headingDegrees).toBeGreaterThanOrEqual(0)
@@ -124,6 +134,7 @@ describe('droneTelemetryFor — investigating', () => {
       patrollingQuadrocopter,
       investigatingActivity,
       100 + INVESTIGATION_DURATION_SIM_SECONDS - 1,
+      MAX_ENDURANCE_SIM_SECONDS,
     )
 
     expect(telemetry.state).toBe('investigating')
@@ -132,9 +143,9 @@ describe('droneTelemetryFor — investigating', () => {
 
 describe('baseStationCountsFor', () => {
   const drones: Drone[] = [
-    { id: 'drone-1', type: 'Quadrocopter', position: { lat: 0, lng: 0 }, homeBaseStationId: 'base-1' },
-    { id: 'drone-2', type: 'FixedWingDrone', position: { lat: 0, lng: 0 }, homeBaseStationId: 'base-1' },
-    { id: 'drone-3', type: 'Quadrocopter', position: { lat: 0, lng: 0 }, homeBaseStationId: 'base-2' },
+    { id: 'drone-1', type: 'Quadrocopter', position: { lat: 0, lng: 0 }, homeBaseStationId: 'base-1', ...droneSpecFixture },
+    { id: 'drone-2', type: 'FixedWingDrone', position: { lat: 0, lng: 0 }, homeBaseStationId: 'base-1', ...droneSpecFixture },
+    { id: 'drone-3', type: 'Quadrocopter', position: { lat: 0, lng: 0 }, homeBaseStationId: 'base-2', ...droneSpecFixture },
   ]
 
   it('counts a patrolling Drone homed at the Base Station as docked', () => {

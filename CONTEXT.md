@@ -40,6 +40,14 @@ _Avoid_: Quad, multirotor
 A Drone that patrols a long perimeter loop at higher speed/range than a Quadrocopter, and circles (rather than hovers over) an Event when investigating, since it cannot stop mid-air.
 _Avoid_: Winged drone, plane drone
 
+**Drone Model**:
+A Drone's real-world product identity (e.g. "DJI Mavic 4 Pro", "FlyEye") — distinct from `DroneType` (Quadrocopter vs. Fixed-Wing Drone, which governs simulated behavior) and from **Payload**. Two Drones can share a Drone Model (e.g. both Fixed-Wing Drones fly as a FlyEye) while differing in behavior overrides, or share a `DroneType` while being different Drone Models with different specs.
+_Avoid_: Drone type (ambiguous with `DroneType`), make/manufacturer
+
+**Payload**:
+A Drone's sensor payload: `'Optical'` or `'Thermal'`. A third independent axis alongside `DroneType` (behavior) and Drone Model (real-world identity) — any combination of the three can occur.
+_Avoid_: Sensor type, camera
+
 ### Events & Detection
 
 **Event**:

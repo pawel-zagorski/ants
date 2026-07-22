@@ -26,6 +26,12 @@ describe('loadWorld', () => {
           type: 'Quadrocopter',
           position: { lat: 64.502, lng: 26.252 },
           homeBaseStationId: 'base-1',
+          model: 'DJI Mavic 4 Pro',
+          payload: 'Optical',
+          maxEnduranceSimSeconds: 3060,
+          cruiseSpeedMetersPerSecond: 10,
+          datalinkRangeMeters: 30000,
+          imageUrl: '/img/dji_mavic_4_pro.jpeg',
         },
       ],
     }

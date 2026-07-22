@@ -1,4 +1,4 @@
-import type { World } from '../world/types'
+import type { Drone, World } from '../world/types'
 
 /**
  * A minimal, valid World fixture for tests that only care about specific
@@ -14,4 +14,23 @@ export function createWorldFixture(overrides: Partial<World> = {}): World {
     drones: [],
     ...overrides,
   }
+}
+
+/**
+ * Default values for a Drone's issue I fleet-identity fields
+ * (`model`/`payload`/`maxEnduranceSimSeconds`/`cruiseSpeedMetersPerSecond`/
+ * `datalinkRangeMeters`/`imageUrl`), for tests that build a `Drone` fixture
+ * and don't care about these fields' specific values — spread this in and
+ * override individual fields as needed.
+ */
+export const droneSpecFixture: Pick<
+  Drone,
+  'model' | 'payload' | 'maxEnduranceSimSeconds' | 'cruiseSpeedMetersPerSecond' | 'datalinkRangeMeters' | 'imageUrl'
+> = {
+  model: 'Test Drone',
+  payload: 'Optical',
+  maxEnduranceSimSeconds: 7200,
+  cruiseSpeedMetersPerSecond: 10,
+  datalinkRangeMeters: 30000,
+  imageUrl: '/img/test-drone.jpg',
 }
