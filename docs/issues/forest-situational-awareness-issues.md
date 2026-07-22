@@ -283,7 +283,7 @@ I
 
 ---
 
-## [ ] L — Always-on animated Datalink lines to the nearest Relay
+## [x] L — Always-on animated Datalink lines to the nearest Relay
 
 ### Parent
 
@@ -299,10 +299,10 @@ Add `CONTEXT.md` glossary entries for **Relay** and **Datalink** (see wording dr
 
 ### Acceptance criteria
 
-- [ ] All 4 Drones simultaneously show a dashed line to their own nearest Relay (Tower or Base Station) at all times, independent of selection
-- [ ] The line visibly updates to a different Relay if a Drone patrols closer to a different one than its previous nearest
-- [ ] The dashes visibly animate in the direction of travel toward the Relay (not static, not reversed)
-- [ ] `CONTEXT.md` has new **Relay** and **Datalink** entries
+- [x] All 4 Drones simultaneously show a dashed line to their own nearest Relay (Tower or Base Station) at all times, independent of selection
+- [x] The line visibly updates to a different Relay if a Drone patrols closer to a different one than its previous nearest
+- [x] The dashes visibly animate in the direction of travel toward the Relay (not static, not reversed)
+- [x] `CONTEXT.md` has new **Relay** and **Datalink** entries
 
 ### Blocked by
 

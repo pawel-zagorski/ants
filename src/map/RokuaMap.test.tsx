@@ -132,6 +132,28 @@ describe('RokuaMap', () => {
   })
 })
 
+describe('RokuaMap Datalink lines (issue L)', () => {
+  it('shows an animated Datalink line for every Drone, independent of selection', () => {
+    render(<RokuaMap world={world} scenario={emptyScenario} />)
+
+    expect(document.querySelectorAll('path.datalink-line')).toHaveLength(world.drones.length)
+  })
+
+  it("keeps showing every Drone's Datalink line once a status panel is open", () => {
+    render(<RokuaMap world={world} scenario={emptyScenario} />)
+
+    fireEvent.click(document.querySelector('.asset-icon-quadrocopter') as Element)
+
+    expect(document.querySelectorAll('path.datalink-line')).toHaveLength(world.drones.length)
+  })
+
+  it("targets drone-1's Datalink line at its nearest Relay (base-1, closer than tower-1)", () => {
+    render(<RokuaMap world={world} scenario={emptyScenario} />)
+
+    expect(document.querySelector('.datalink-line-drone-drone-1.datalink-line-relay-base-1')).not.toBeNull()
+  })
+})
+
 describe('RokuaMap Event spawning and Ground Truth View', () => {
   const scenarioWithImmediateEvent: Scenario = {
     events: [

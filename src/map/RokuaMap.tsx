@@ -4,6 +4,7 @@ import 'leaflet/dist/leaflet.css'
 import { toLeafletBounds } from './geo'
 import { AssetMarkers } from './AssetMarkers'
 import { AssetPanel } from './AssetPanel'
+import { DatalinkLines } from './DatalinkLines'
 import { EventMarkers } from './EventMarkers'
 import { GroundTruthToggle } from './GroundTruthToggle'
 import { ReturnEnvelope } from './ReturnEnvelope'
@@ -52,7 +53,10 @@ function isDroneAsset(asset: Asset): asset is Drone {
  * Detection (issue E), and Resolution (issue G) — Towers and Base Stations
  * stay at their fixed `world` positions. The default ("fog of war") view
  * shows only Detected/Resolved Events; the Ground Truth View toggle (off
- * by default) additionally reveals Undetected ones, faded/dashed.
+ * by default) additionally reveals Undetected ones, faded/dashed. Every
+ * Drone also always shows an animated Datalink line to its nearest Relay
+ * (issue L, see `DatalinkLines`) — unlike the status panel, this layer is
+ * not gated by selection.
  */
 export function RokuaMap({ world, scenario }: RokuaMapProps) {
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null)
@@ -80,6 +84,7 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
   return (
     <MapContainer bounds={toLeafletBounds(world.bounds)} className="rokua-map">
       <TileLayer url={OSM_TILE_URL} attribution={OSM_ATTRIBUTION} />
+      <DatalinkLines world={liveWorld} />
       <AssetMarkers world={liveWorld} onSelect={(asset) => setSelectedAssetId(asset.id)} />
       <EventMarkers events={clock.simulationState.events} groundTruthViewEnabled={groundTruthViewEnabled} />
       {selectedAsset && isDroneAsset(selectedAsset) && selectedDroneRemainingEnduranceSimSeconds !== undefined && (

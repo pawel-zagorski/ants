@@ -52,6 +52,14 @@ _Avoid_: Sensor type, camera
 The map overlay shown only while a Drone's status panel is open: the union of two ellipses, one per Base Station, each with foci at the Drone's current live position and that Base Station, sized so the sum of the two focal distances equals the Drone's live `remainingEnduranceSimSeconds × cruiseSpeedMetersPerSecond` (the dynamic, shrinking-over-time flight budget) for that ellipse's Base Station. Answers "everywhere this Drone could still go and still make it back to *some* Base Station" — a Drone nearer Base A gets a fatter ellipse toward A, nearer Base B a fatter one toward B, and the two overlap/union in between. A Base Station outside the current budget simply drops its ellipse from the union rather than rendering a degenerate shape.
 _Avoid_: Range ring, fuel ring (this is a two-focus ellipse, not a simple radius)
 
+**Relay**:
+The generic role either a Tower or a Base Station plays as a Datalink endpoint — the union of `World.towers` and `World.baseStations` (4 fixed assets in the default `world.json`). A Tower/Base Station is still identified and rendered as itself everywhere else; "Relay" only names this cross-cutting role when talking about which fixed asset a Drone's Datalink line points to.
+_Avoid_: Node, ground station (use "Relay" to keep it distinct from "Base Station")
+
+**Datalink**:
+The always-visible, animated (marching-ants) line from a Drone to its nearest Relay, by straight-line distance, recomputed continuously as the Drone patrols. Distinct from a Base Station's docking/recharge role — a Datalink line can point to either a Tower or a Base Station, whichever is closer.
+_Avoid_: Link, connection line (use "Datalink" for this specific always-on nearest-Relay line)
+
 ### Events & Detection
 
 **Event**:
