@@ -6,6 +6,34 @@
  * problem in a malformed file at once instead of stopping at the first.
  */
 
+/**
+ * Fetches `url`, checks the response is `ok`, parses the body as JSON, and
+ * hands the result to `parse`. Shared by `loadWorld` and `loadScenario`,
+ * which differ only in which `parse*` function they delegate to. Throws a
+ * plain `Error` if the fetch fails or the body isn't valid JSON; any error
+ * thrown by `parse` (e.g. a `WorldValidationError`/`ScenarioValidationError`)
+ * propagates unchanged.
+ */
+export async function fetchAndParseJson<T>(
+  url: string,
+  parse: (raw: unknown) => T,
+  fetchImpl: typeof fetch = fetch,
+): Promise<T> {
+  const response = await fetchImpl(url)
+  if (!response.ok) {
+    throw new Error(`Failed to load ${url}: ${response.status} ${response.statusText}`)
+  }
+
+  let data: unknown
+  try {
+    data = await response.json()
+  } catch (cause) {
+    throw new Error(`Failed to parse ${url} as JSON`, { cause })
+  }
+
+  return parse(data)
+}
+
 export function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

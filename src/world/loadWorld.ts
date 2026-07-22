@@ -1,3 +1,4 @@
+import { fetchAndParseJson } from '../validation/jsonValidation'
 import { parseWorld, WorldValidationError } from './schema'
 import type { World } from './types'
 
@@ -13,19 +14,7 @@ export async function loadWorld(
   url: string = DEFAULT_WORLD_URL,
   fetchImpl: typeof fetch = fetch,
 ): Promise<World> {
-  const response = await fetchImpl(url)
-  if (!response.ok) {
-    throw new Error(`Failed to load ${url}: ${response.status} ${response.statusText}`)
-  }
-
-  let data: unknown
-  try {
-    data = await response.json()
-  } catch (cause) {
-    throw new Error(`Failed to parse ${url} as JSON`, { cause })
-  }
-
-  return parseWorld(data)
+  return fetchAndParseJson(url, parseWorld, fetchImpl)
 }
 
 export { WorldValidationError }
