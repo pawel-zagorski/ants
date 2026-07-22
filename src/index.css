@@ -152,12 +152,19 @@ body,
   opacity: 0.5;
 }
 
-/* Simulation Clock UI (issue C) — play/pause/speed/step controls. */
-.simulation-clock-panel {
+/* Shared bottom-left bar that holds the clock panel and ground-truth toggle side-by-side. */
+.bottom-controls {
   position: absolute;
   bottom: 16px;
   left: 16px;
   z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Simulation Clock UI (issue C) — play/pause/speed/step controls. */
+.simulation-clock-panel {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -247,10 +254,6 @@ body,
 
 /* Ground Truth View toggle (issue D) — sits alongside the Simulation Clock panel. */
 .ground-truth-toggle {
-  position: absolute;
-  bottom: 16px;
-  left: 260px;
-  z-index: 1000;
   display: flex;
   align-items: center;
   gap: 6px;

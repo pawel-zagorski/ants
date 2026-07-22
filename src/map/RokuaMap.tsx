@@ -71,8 +71,10 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
           onClose={() => setSelectedAssetId(null)}
         />
       )}
-      <SimulationClockPanel clock={clock} />
-      <GroundTruthToggle enabled={groundTruthViewEnabled} onChange={setGroundTruthViewEnabled} />
+      <div className="bottom-controls">
+        <SimulationClockPanel clock={clock} />
+        <GroundTruthToggle enabled={groundTruthViewEnabled} onChange={setGroundTruthViewEnabled} />
+      </div>
     </MapContainer>
   )
 }
