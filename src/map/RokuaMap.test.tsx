@@ -607,6 +607,42 @@ describe('RokuaMap Fire clickable Detection Status panel (issue T)', () => {
   })
 })
 
+describe('RokuaMap Uncertainty Ellipse default-view treatment (issue S)', () => {
+  // tower-1 sits at (64.7, 26.2) with a 15000m detectionRadiusMeters — this
+  // Fire spawns right on top of it, guaranteeing a Tower Detection at
+  // elapsedSimSeconds 0.
+  const fireWithinTowerRange: Scenario = {
+    events: [{ id: 'fire-1', type: 'Fire', position: { lat: 64.7, lng: 26.2 }, spawnAtSimSeconds: 0 }],
+    wind: TEST_WIND,
+  }
+
+  it('shows an Uncertainty Ellipse (not the real hex footprint, not a plain marker only) for a Tower-Detected Fire in the default view', () => {
+    render(<RokuaMap world={world} scenario={fireWithinTowerRange} />)
+
+    expect(document.querySelectorAll('.uncertainty-ellipse')).toHaveLength(1)
+    expect(document.querySelectorAll('.fire-footprint-hex')).toHaveLength(0)
+    expect(document.querySelector('.event-icon-fire')).not.toBeNull()
+  })
+
+  it('keeps showing the real Fire Footprint (not the Uncertainty Ellipse) in Ground Truth View, unaffected by this slice', () => {
+    render(<RokuaMap world={world} scenario={fireWithinTowerRange} />)
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Ground Truth View' }))
+
+    expect(document.querySelectorAll('.uncertainty-ellipse')).toHaveLength(0)
+    expect(document.querySelectorAll('.fire-footprint-hex').length).toBeGreaterThan(0)
+  })
+
+  it('keeps showing exactly one Uncertainty Ellipse as the Simulation Clock advances (size growth itself is covered by engine/uncertaintyEllipse.test.ts)', () => {
+    render(<RokuaMap world={world} scenario={fireWithinTowerRange} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Step' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Step' }))
+
+    expect(document.querySelectorAll('.uncertainty-ellipse')).toHaveLength(1)
+  })
+})
+
 describe('RokuaMap Return Envelope overlay (issue K)', () => {
   const base1Position = { lat: 64.5, lng: 26.25 }
   // 3500m east of base-1 — tuned against maxEnduranceSimSeconds/

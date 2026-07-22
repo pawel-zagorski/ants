@@ -459,7 +459,7 @@ P, Q
 
 ---
 
-## [ ] S — Uncertainty Ellipse in default view for Tower-Detected Fire
+## [x] S — Uncertainty Ellipse in default view for Tower-Detected Fire
 
 ### Parent
 
@@ -471,10 +471,10 @@ Once a Fire is Tower-Detected (issue Q), compute and render an Uncertainty Ellip
 
 ### Acceptance criteria
 
-- [ ] A Tower-Detected, not-yet-Investigated Fire shows an ellipse (not the real hex footprint, not a plain marker) in the default view
-- [ ] Ellipse size increases with detecting-Tower distance, all else equal (unit test with two fixture Towers at different distances)
-- [ ] Ellipse size increases with elapsed time since Detection, all else equal (unit test at two different elapsed times)
-- [ ] Ground Truth View continues to show the real Fire Footprint unaffected by this slice
+- [x] A Tower-Detected, not-yet-Investigated Fire shows an ellipse (not the real hex footprint, not a plain marker) in the default view
+- [x] Ellipse size increases with detecting-Tower distance, all else equal (unit test with two fixture Towers at different distances)
+- [x] Ellipse size increases with elapsed time since Detection, all else equal (unit test at two different elapsed times)
+- [x] Ground Truth View continues to show the real Fire Footprint unaffected by this slice
 
 ### Blocked by
 

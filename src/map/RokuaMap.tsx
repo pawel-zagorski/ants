@@ -12,6 +12,7 @@ import { FireMarkers } from './FireMarkers'
 import { FirePanel } from './FirePanel'
 import { GroundTruthToggle } from './GroundTruthToggle'
 import { ReturnEnvelope } from './ReturnEnvelope'
+import { UncertaintyEllipseLayer } from './UncertaintyEllipseLayer'
 import { WindIndicator } from './WindIndicator'
 import { withDronePositions } from '../engine/liveWorld'
 import { droneTelemetryFor } from '../engine/telemetry'
@@ -76,12 +77,14 @@ function isDroneAsset(asset: Asset): asset is Drone {
  * loaded-check needed. Ground Truth View also renders each Fire's real,
  * live Fire Footprint (issue R, `FireFootprintLayer`) as a growing
  * hex-tile mosaic, biased downwind by `scenario.wind` — hidden entirely in
- * the default view, which shows only `FireMarkers`' plain marker/tier icon
- * until a later issue (S) adds the Uncertainty Ellipse/Confirmed Shape
- * default-view treatments. Clicking a clickable (non-`'undetected'`) Fire
- * marker instead opens `FirePanel` (issue T): its read-only Detection
- * Status (detecting Tower id/time, current tier) — no dispatch UI on this
- * panel yet, that's issue U.
+ * the default view. That default view instead shows the Uncertainty
+ * Ellipse (issue S, `UncertaintyEllipseLayer`) for a Tower-Detected,
+ * not-yet-Investigated Fire, sized by the detecting Tower's distance and
+ * elapsed time since Detection — a later issue still owes the Confirmed
+ * Shape treatment once a Fire reaches `'investigated'`. Clicking a
+ * clickable (non-`'undetected'`) Fire marker instead opens `FirePanel`
+ * (issue T): its read-only Detection Status (detecting Tower id/time,
+ * current tier) — no dispatch UI on this panel yet, that's issue U.
  */
 export function RokuaMap({ world, scenario }: RokuaMapProps) {
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null)
@@ -151,6 +154,12 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
       <FireFootprintLayer
         fires={clock.simulationState.fires}
         wind={scenario.wind}
+        elapsedSimSeconds={clock.simulationState.elapsedSimSeconds}
+        groundTruthViewEnabled={groundTruthViewEnabled}
+      />
+      <UncertaintyEllipseLayer
+        fires={clock.simulationState.fires}
+        towers={liveWorld.towers}
         elapsedSimSeconds={clock.simulationState.elapsedSimSeconds}
         groundTruthViewEnabled={groundTruthViewEnabled}
       />
