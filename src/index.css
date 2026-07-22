@@ -300,6 +300,53 @@ body,
   animation: none;
 }
 
+/* EventPanel (issue O) — reuses `.asset-panel`'s look (see EventPanel.tsx's
+   doc comment) but adds its own "Available Drones" list/Send-button
+   section, which AssetPanel has no equivalent of. */
+.event-panel-drones {
+  margin-top: 12px;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 8px;
+}
+
+.event-panel-drones-title {
+  margin: 0 0 6px 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  color: #6b7280;
+}
+
+.event-panel-no-drones {
+  margin: 0;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.event-panel-drone-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.event-panel-drone-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 14px;
+}
+
+.event-panel-drone-row button {
+  cursor: pointer;
+  border: 1px solid #1d4ed8;
+  border-radius: 4px;
+  background: #1d4ed8;
+  color: #ffffff;
+  padding: 2px 10px;
+  font-size: 13px;
+}
+
 /* Ground Truth View toggle (issue D) — sits alongside the Simulation Clock panel. */
 .ground-truth-toggle {
   display: flex;

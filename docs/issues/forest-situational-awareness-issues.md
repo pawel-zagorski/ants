@@ -365,7 +365,7 @@ None — can start immediately.
 
 ---
 
-## [ ] O — Manual dispatch for Person Sighting/Fallen Tree; retire auto-dispatch
+## [x] O — Manual dispatch for Person Sighting/Fallen Tree; retire auto-dispatch
 
 ### Parent
 
@@ -377,11 +377,11 @@ Per ADR-0005, remove `dispatch.ts`'s nearest-available-Drone auto-selection trig
 
 ### Acceptance criteria
 
-- [ ] A new Detection no longer auto-dispatches any Drone (existing auto-dispatch tests updated to assert no automatic transition)
-- [ ] Clicking a Detected Person Sighting/Fallen Tree opens a panel showing detection source/time and a list of available Drones
-- [ ] Clicking "Send" on a listed Drone starts that Drone's existing hover/circle investigate behavior, unchanged from before
-- [ ] A Drone already investigating/unavailable does not appear in the list
-- [ ] Unit tests cover: no auto-dispatch on Detection, manual send triggers the correct investigate mode per Drone type, investigate-then-return-to-patrol timing unchanged
+- [x] A new Detection no longer auto-dispatches any Drone (existing auto-dispatch tests updated to assert no automatic transition)
+- [x] Clicking a Detected Person Sighting/Fallen Tree opens a panel showing detection source/time and a list of available Drones
+- [x] Clicking "Send" on a listed Drone starts that Drone's existing hover/circle investigate behavior, unchanged from before
+- [x] A Drone already investigating/unavailable does not appear in the list
+- [x] Unit tests cover: no auto-dispatch on Detection, manual send triggers the correct investigate mode per Drone type, investigate-then-return-to-patrol timing unchanged
 
 ### Blocked by
 

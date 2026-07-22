@@ -1,7 +1,6 @@
 import { distanceMetersBetween, pointOnCircle } from '../map/geo'
 import type { LatLng } from '../map/geo'
-import { INVESTIGATION_DURATION_SIM_SECONDS, investigatePositionFor, selectNearestAvailableDrone } from './dispatch'
-import type { DispatchCandidate } from './dispatch'
+import { INVESTIGATION_DURATION_SIM_SECONDS, investigatePositionFor } from './dispatch'
 import type { Scenario, ScenarioEntry, ScenarioEvent, ScenarioFireIgnition } from '../scenario/types'
 import type { BaseStation, DroneType, World } from '../world/types'
 import type {
@@ -413,65 +412,6 @@ function positionForActivity(
 }
 
 /**
- * The Event ids that flipped from not-yet-`'detected'` to `'detected'`
- * *within this same call* — comparing `incomingEvents` (the state entering
- * this tick) against `events` (this tick's freshly Detection-checked
- * result). Per issue F's design guidance, this is a Drone's one and only
- * dispatch opportunity for that Event: sorted by id for a stable,
- * deterministic processing order when several Events are newly Detected in
- * the same tick.
- */
-function newlyDetectedEventIds(
-  incomingEvents: Record<string, EventRuntimeState>,
-  events: Record<string, EventRuntimeState>,
-): string[] {
-  return Object.keys(events)
-    .filter((id) => events[id].status === 'detected' && incomingEvents[id]?.status !== 'detected' && incomingEvents[id]?.status !== 'resolved')
-    .sort()
-}
-
-/**
- * Applies this tick's dispatch decisions on top of `droneActivityAfterExpiry`:
- * for each newly-Detected Event (in stable id order — see
- * `newlyDetectedEventIds`), picks the nearest currently-`'patrolling'`
- * Drone (by its `dronePatrol` position *this tick*, before dispatch — see
- * `selectNearestAvailableDrone`) and switches it to `'investigating'` that
- * Event as of `elapsedSimSeconds`. A Drone dispatched to an earlier Event
- * in this same loop is excluded from later Events in the loop (it's no
- * longer `'patrolling'` in the accumulator), so at most one Drone is
- * assigned per Event and no Drone is double-booked in a single tick. If no
- * Drone is available for a given Event, that Event is simply left
- * undispatched this tick (issue F: "the Detection still stands but no
- * dispatch occurs") — there is deliberately no retry on a later tick.
- */
-function withNewDispatches(
-  droneActivityAfterExpiry: Record<string, DroneActivityState>,
-  dronePatrol: Record<string, DronePatrolState>,
-  incomingEvents: Record<string, EventRuntimeState>,
-  events: Record<string, EventRuntimeState>,
-  elapsedSimSeconds: number,
-): Record<string, DroneActivityState> {
-  const droneActivity: Record<string, DroneActivityState> = { ...droneActivityAfterExpiry }
-
-  for (const eventId of newlyDetectedEventIds(incomingEvents, events)) {
-    const candidates: DispatchCandidate[] = Object.entries(droneActivity)
-      .filter(([, activity]) => activity.mode === 'patrolling')
-      .map(([droneId]) => ({ id: droneId, position: dronePatrol[droneId].position }))
-
-    const selectedDroneId = selectNearestAvailableDrone(events[eventId].position, candidates)
-    if (selectedDroneId === undefined) continue
-
-    droneActivity[selectedDroneId] = {
-      mode: 'investigating',
-      assignedEventId: eventId,
-      investigationStartedAtSimSeconds: elapsedSimSeconds,
-    }
-  }
-
-  return droneActivity
-}
-
-/**
  * Splits a Scenario's single timed `events` list (ADR-0004: Fire ignitions
  * and Person Sighting/Fallen Tree Events share one JSON array, told apart
  * by `type`) into the two separate arrays `SimulationState` carries
@@ -497,18 +437,19 @@ function partitionScenarioEntries(
 
 /**
  * The shared derivation behind both `initializeSimulationState` (called
- * with `incomingDroneActivity`/`incomingEvents`/`incomingFires` all empty,
- * so an Event Detected right at `elapsedSimSeconds = 0` still gets its one
- * dispatch opportunity) and `advanceSimulation` (called with the previous
- * tick's `droneActivity`/`events`/`fires` as memory). Order matters: (1)
- * let any in-progress investigation expire back to `'patrolling'` first,
- * (2) derive every Drone's position from its (possibly just-expired)
- * activity, (3) run Event and Fire Detection using those positions, (4)
- * dispatch newly-Detected Events to nearest-available Drones (Fire is not
- * part of this dispatch step — ADR-0004/ADR-0005; a Fire never triggers an
- * automatic Drone dispatch), then (5) re-derive position only for Drones
- * newly switched to `'investigating'` this tick, so they appear at their
- * investigate position immediately rather than one tick later.
+ * with `incomingDroneActivity`/`incomingEvents`/`incomingFires` all empty)
+ * and `advanceSimulation` (called with the previous tick's
+ * `droneActivity`/`events`/`fires` as memory). Order matters: (1) let any
+ * in-progress investigation expire back to `'patrolling'` first, (2)
+ * derive every Drone's position from its (possibly just-expired) activity,
+ * (3) run Event and Fire Detection using those positions. There is
+ * deliberately no automatic-dispatch step here (ADR-0004/ADR-0005, issues
+ * O/Q): a newly-Detected Fire never dispatches a Drone at all in this
+ * slice (Fire's own dispatch mechanism is a later issue, U/V), and a
+ * newly-Detected Person Sighting/Fallen Tree Event no longer does either —
+ * dispatching a Drone to an Event is now exclusively a user-driven action
+ * via `withManualDispatch` (see `EventPanel`'s "Send" button), applied on
+ * top of whatever this function returns, not from within it.
  */
 function deriveDronesEventsAndFires(
   dronePatrolParams: Record<string, DronePatrolState>,
@@ -525,43 +466,21 @@ function deriveDronesEventsAndFires(
   events: Record<string, EventRuntimeState>
   fires: Record<string, FireRuntimeState>
 } {
-  const droneActivityAfterExpiry: Record<string, DroneActivityState> = {}
+  const droneActivity: Record<string, DroneActivityState> = {}
   for (const droneId of Object.keys(dronePatrolParams)) {
-    droneActivityAfterExpiry[droneId] = activityAfterInvestigationExpiry(incomingDroneActivity[droneId], elapsedSimSeconds)
+    droneActivity[droneId] = activityAfterInvestigationExpiry(incomingDroneActivity[droneId], elapsedSimSeconds)
   }
-
-  const dronePatrolBeforeDispatch: Record<string, DronePatrolState> = {}
-  for (const [droneId, patrol] of Object.entries(dronePatrolParams)) {
-    dronePatrolBeforeDispatch[droneId] = {
-      ...patrol,
-      position: positionForActivity(patrol, droneActivityAfterExpiry[droneId], elapsedSimSeconds, incomingEvents),
-    }
-  }
-
-  const events = eventsAt(scenarioEvents, elapsedSimSeconds, incomingEvents, dronePatrolBeforeDispatch)
-  const fires = firesAt(scenarioFireIgnitions, elapsedSimSeconds, incomingFires, dronePatrolBeforeDispatch, towerDetection)
-
-  const droneActivity = withNewDispatches(droneActivityAfterExpiry, dronePatrolBeforeDispatch, incomingEvents, events, elapsedSimSeconds)
 
   const dronePatrol: Record<string, DronePatrolState> = {}
-  for (const [droneId, patrol] of Object.entries(dronePatrolBeforeDispatch)) {
-    const activity = droneActivity[droneId]
-    const wasAlreadyInvestigating = droneActivityAfterExpiry[droneId]?.mode === 'investigating'
-
-    if (activity.mode === 'investigating' && !wasAlreadyInvestigating) {
-      const assignedEvent = events[activity.assignedEventId]
-      dronePatrol[droneId] = {
-        ...patrol,
-        position: investigatePositionFor(
-          patrol.droneType,
-          assignedEvent.position,
-          elapsedSimSeconds - activity.investigationStartedAtSimSeconds,
-        ),
-      }
-    } else {
-      dronePatrol[droneId] = patrol
+  for (const [droneId, patrol] of Object.entries(dronePatrolParams)) {
+    dronePatrol[droneId] = {
+      ...patrol,
+      position: positionForActivity(patrol, droneActivity[droneId], elapsedSimSeconds, incomingEvents),
     }
   }
+
+  const events = eventsAt(scenarioEvents, elapsedSimSeconds, incomingEvents, dronePatrol)
+  const fires = firesAt(scenarioFireIgnitions, elapsedSimSeconds, incomingFires, dronePatrol, towerDetection)
 
   return { dronePatrol, droneActivity, events, fires }
 }
@@ -572,10 +491,10 @@ function deriveDronesEventsAndFires(
  * ranged per its `DroneType` — see `PATROL_PARAMS_BY_DRONE_TYPE` and
  * `DETECTION_RADIUS_METERS_BY_DRONE_TYPE`), one detection entry per Tower,
  * plus whichever of the Scenario's Events/Fire ignitions have already
- * spawned (and been Detection-checked, and — for Events only — dispatched
- * a Drone if newly Detected) at `elapsedSimSeconds = 0`. Every Drone starts
- * `'patrolling'` (issue F). Base Stations are static in this slice and
- * carry no simulation state.
+ * spawned and been Detection-checked at `elapsedSimSeconds = 0`. Every
+ * Drone starts `'patrolling'` (issue F) — none is auto-dispatched even if
+ * an Event/Fire is Detected right away (see `deriveDronesEventsAndFires`).
+ * Base Stations are static in this slice and carry no simulation state.
  */
 export function initializeSimulationState(world: World, scenario: Scenario): SimulationState {
   const dronePatrolParams: Record<string, DronePatrolState> = {}
@@ -678,5 +597,53 @@ export function advanceSimulation(state: SimulationState, elapsedSimSeconds: num
     scenarioFireIgnitions: state.scenarioFireIgnitions,
     events: derived.events,
     fires: derived.fires,
+  }
+}
+
+/**
+ * Applies an explicit user "send this Drone" action (ADR-0005: manual
+ * dispatch replaces auto-dispatch for Person Sighting/Fallen Tree — see
+ * `EventPanel`'s "Send" button) on top of `state`, as of `state`'s own
+ * `elapsedSimSeconds`. This is the pure state-transition counterpart to
+ * `initializeSimulationState`/`advanceSimulation` for a user-driven action
+ * rather than a time-driven one: `useSimulationClock`'s `sendDrone` calls
+ * this directly (rather than queueing something for the next
+ * `advanceSimulation` tick) precisely so a "Send" click takes effect
+ * immediately, whether the Simulation Clock is playing, paused, or
+ * mid-step. `droneId` switches to `'investigating'` `eventId` starting
+ * now, and its position is re-derived immediately via
+ * `investigatePositionFor` (hover for a Quadrocopter, circle for a
+ * Fixed-Wing Drone) so it appears there without waiting a tick — from that
+ * point on, `advanceSimulation`'s existing `activityAfterInvestigationExpiry`
+ * reverts it to `'patrolling'` after `INVESTIGATION_DURATION_SIM_SECONDS`,
+ * the same investigation lifecycle issue F originally gave an
+ * auto-dispatched Drone. A no-op (returns `state` unchanged, same object
+ * identity) if
+ * `droneId` isn't currently `'patrolling'` or `eventId` isn't a
+ * currently-`'detected'` Event — `EventPanel` only ever offers "Send" for
+ * an eligible combination, but this stays defensive/total rather than
+ * throwing on a stale click.
+ */
+export function withManualDispatch(state: SimulationState, droneId: string, eventId: string): SimulationState {
+  const patrol = state.dronePatrol[droneId]
+  const activity = state.droneActivity[droneId]
+  const event = state.events[eventId]
+
+  if (!patrol || activity?.mode !== 'patrolling' || !event || event.status !== 'detected') {
+    return state
+  }
+
+  const investigationStartedAtSimSeconds = state.elapsedSimSeconds
+
+  return {
+    ...state,
+    dronePatrol: {
+      ...state.dronePatrol,
+      [droneId]: { ...patrol, position: investigatePositionFor(patrol.droneType, event.position, 0) },
+    },
+    droneActivity: {
+      ...state.droneActivity,
+      [droneId]: { mode: 'investigating', assignedEventId: eventId, investigationStartedAtSimSeconds },
+    },
   }
 }

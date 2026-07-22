@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { advanceSimulation, initializeSimulationState } from './advanceSimulation'
+import { advanceSimulation, initializeSimulationState, withManualDispatch } from './advanceSimulation'
 import type { SimulationState } from './types'
 import type { Scenario } from '../scenario/types'
 import type { World } from '../world/types'
@@ -21,6 +21,14 @@ export interface SimulationClock {
   setSpeedMultiplier: (multiplier: SimulationSpeedMultiplier) => void
   /** Advances the clock by one fixed increment; intended for use while paused. */
   step: () => void
+  /**
+   * Issue O's manual dispatch trigger: sends `droneId` to investigate
+   * `eventId` right now, regardless of play/pause state (see
+   * `withManualDispatch`'s doc comment for why this applies immediately
+   * rather than queueing for the next tick). Called by `EventPanel`'s
+   * "Send" button via `RokuaMap`.
+   */
+  sendDrone: (droneId: string, eventId: string) => void
 }
 
 /**
@@ -82,6 +90,10 @@ export function useSimulationClock(world: World, scenario: Scenario): Simulation
     () => setSimulationState((previous) => advanceSimulation(previous, previous.elapsedSimSeconds + STEP_SIM_SECONDS)),
     [],
   )
+  const sendDrone = useCallback(
+    (droneId: string, eventId: string) => setSimulationState((previous) => withManualDispatch(previous, droneId, eventId)),
+    [],
+  )
 
-  return { simulationState, isRunning, speedMultiplier, play, pause, setSpeedMultiplier, step }
+  return { simulationState, isRunning, speedMultiplier, play, pause, setSpeedMultiplier, step, sendDrone }
 }
