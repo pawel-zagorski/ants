@@ -29,12 +29,17 @@ function App() {
   const [state, setState] = useState<AppState>({ status: 'loading-world' })
   const isMountedRef = useRef(true)
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    // Reset on every mount, not just once: StrictMode's dev-only
+    // mount->cleanup->remount cycle runs the cleanup below before either
+    // in-flight `loadWorld`/`loadScenario` promise below settles, so without
+    // this the flag would get stuck at `false` forever and the app would
+    // hang on "Loading…" even though the fetch succeeded.
+    isMountedRef.current = true
+    return () => {
       isMountedRef.current = false
-    },
-    [],
-  )
+    }
+  }, [])
 
   useEffect(() => {
     loadWorld()

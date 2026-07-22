@@ -1,3 +1,4 @@
+import { StrictMode } from 'react'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
@@ -49,6 +50,19 @@ describe('App', () => {
 
     expect(await screen.findByRole('button', { name: 'Play' })).toBeInTheDocument()
     expect(screen.getByText(BUNDLED_SCENARIOS[0].name)).toBeInTheDocument()
+  })
+
+  // Regression test for a bug where the app hung on "Loading…" forever in
+  // dev mode. `main.tsx` renders `<App />` inside `<StrictMode>`, whose
+  // dev-only mount->cleanup->remount cycle exercises the mount-tracking ref
+  // guard around `loadWorld`'s `setState` in a way a plain `render(<App />)`
+  // (used above) never does.
+  it('reaches the scenario start screen under StrictMode, not just plain rendering', async () => {
+    stubFetchByUrl({ '/world.json': VALID_WORLD })
+
+    render(<App />, { wrapper: StrictMode })
+
+    expect(await screen.findByRole('button', { name: 'Play' })).toBeInTheDocument()
   })
 
   it('shows a loud error message when world.json fails validation', async () => {
