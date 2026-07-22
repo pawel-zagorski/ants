@@ -137,6 +137,30 @@ export function droneTelemetryFor(
     }
   }
 
+  if (activity.mode === 'travelingToFire') {
+    return {
+      state: 'investigating',
+      position: patrol.position,
+      batteryPercent,
+      remainingEnduranceSimSeconds,
+      speedMetersPerSecond: patrol.cruiseSpeedMetersPerSecond,
+      assignedFireId: activity.assignedFireId,
+      missionKind: activity.missionKind,
+    }
+  }
+
+  if (activity.mode === 'returningToBase') {
+    return {
+      state: 'investigating',
+      position: patrol.position,
+      batteryPercent,
+      remainingEnduranceSimSeconds,
+      speedMetersPerSecond: patrol.cruiseSpeedMetersPerSecond,
+      assignedFireId: activity.assignedFireId,
+      missionKind: activity.missionKind,
+    }
+  }
+
   if (activity.mode === 'investigatingFire') {
     const secondsSinceOrbitStarted = elapsedSimSeconds - activity.investigationStartedAtSimSeconds
     const patrolLinearSpeedMetersPerSecond = tangentialSpeedMetersPerSecond(

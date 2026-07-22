@@ -778,6 +778,9 @@ describe('withManualFireDispatch (issue U)', () => {
           position: firePosition,
           homeBaseStationId: 'base-1',
           ...droneSpecFixture,
+          // Very high cruise speed so the travel phase completes in <0.01 sim seconds —
+          // these tests care about dispatch state and immediate arrival, not travel duration.
+          cruiseSpeedMetersPerSecond: 10000,
           patrolRadiusMeters: 1,
           patrolSpeedMetersPerSecond: 0,
           detectionRadiusMeters: 500,
@@ -793,15 +796,25 @@ describe('withManualFireDispatch (issue U)', () => {
     expect(state.droneActivity['drone-1']).toEqual({ mode: 'patrolling' })
   })
 
-  it("starts the named Drone investigating the named Fire, as of the state's current elapsedSimSeconds, carrying the given missionKind", () => {
+  it("starts the named Drone traveling to the named Fire on dispatch, then orbiting it after arrival", () => {
     const state = advanceSimulation(initializeSimulationState(worldWithDrone('Quadrocopter'), towerDetectedFireScenario()), 42)
 
     const dispatched = withManualFireDispatch(state, 'drone-1', 'fire-1', 'roundTrip')
 
-    expect(dispatched.droneActivity['drone-1']).toEqual({
+    // Dispatch immediately enters 'travelingToFire' (not yet orbiting)
+    expect(dispatched.droneActivity['drone-1']).toMatchObject({
+      mode: 'travelingToFire',
+      assignedFireId: 'fire-1',
+      departureSimSeconds: 42,
+      missionKind: 'roundTrip',
+      orbitRadiusMeters: fireOrbitRadiusMetersAt(42, TEST_WIND),
+    })
+
+    // After travel completes (cruise speed = 10000 m/s → arrives in <1 sim second), drone orbits
+    const arrived = advanceSimulation(dispatched, 43)
+    expect(arrived.droneActivity['drone-1']).toMatchObject({
       mode: 'investigatingFire',
       assignedFireId: 'fire-1',
-      investigationStartedAtSimSeconds: 42,
       missionKind: 'roundTrip',
       orbitRadiusMeters: fireOrbitRadiusMetersAt(42, TEST_WIND),
     })
@@ -812,15 +825,21 @@ describe('withManualFireDispatch (issue U)', () => {
 
     const dispatched = withManualFireDispatch(state, 'drone-1', 'fire-1', 'oneWay')
 
-    expect(dispatched.droneActivity['drone-1']).toMatchObject({ mode: 'investigatingFire', missionKind: 'oneWay' })
+    expect(dispatched.droneActivity['drone-1']).toMatchObject({ mode: 'travelingToFire', missionKind: 'oneWay' })
   })
 
-  it('holds a manually-sent Quadrocopter exactly over the Fire position immediately, with no extra tick needed', () => {
+  it('flies a manually-sent Quadrocopter to the Fire center once travel completes (orbitRadius = 0 at ignition → orbit entry = fire position)', () => {
     const state = advanceSimulation(initializeSimulationState(worldWithDrone('Quadrocopter'), towerDetectedFireScenario()), 0)
 
     const dispatched = withManualFireDispatch(state, 'drone-1', 'fire-1', 'roundTrip')
 
-    expect(dispatched.dronePatrol['drone-1'].position).toEqual(firePosition)
+    // Drone is en route — position is unchanged on the dispatch tick itself
+    expect(dispatched.dronePatrol['drone-1'].position).not.toEqual(firePosition)
+
+    // After travel completes (cruise speed = 10000 m/s → arrives in <1 sim second):
+    // orbitRadius = 0 at ignition time → orbit entry = fire center → Quadrocopter hovers at fire
+    const afterTravel = advanceSimulation(dispatched, 1)
+    expect(afterTravel.dronePatrol['drone-1'].position).toEqual(firePosition)
   })
 
   it('starts a manually-sent Fixed-Wing Drone circling (not hovering) the Fire, since it cannot hover, once the Fire has grown a non-zero extent to orbit', () => {
@@ -908,6 +927,9 @@ describe('Fire orbit / Confirmed Shape (issue V)', () => {
           position: firePosition,
           homeBaseStationId: 'base-1',
           ...droneSpecFixture,
+          // Very high cruise speed so the travel phase completes in <0.01 sim seconds —
+          // these tests care about orbit/confirmed-shape behavior, not travel duration.
+          cruiseSpeedMetersPerSecond: 10000,
           patrolRadiusMeters: 100,
           patrolSpeedMetersPerSecond: droneLinearSpeedMetersPerSecond,
           detectionRadiusMeters: 500,
@@ -938,7 +960,13 @@ describe('Fire orbit / Confirmed Shape (issue V)', () => {
 
     const dispatched = withManualFireDispatch(state, 'drone-1', 'fire-1', 'roundTrip')
 
-    expect(dispatched.fires['fire-1'].tier).toBe('investigated')
+    // On dispatch alone, fire is still towerDetected — drone is en route, not yet orbiting
+    expect(dispatched.fires['fire-1'].tier).toBe('towerDetected')
+
+    // After drone arrives and begins orbiting (cruise speed = 10000 m/s → arrives in <1 sim second),
+    // tier ratchets to 'investigated'
+    const arrived = advanceSimulation(dispatched, DISPATCH_AT_SIM_SECONDS + 1)
+    expect(arrived.fires['fire-1'].tier).toBe('investigated')
   })
 
   it('exposes a live Confirmed Shape, matching the real live Fire Footprint, on every tick while a Drone actively orbits', () => {
@@ -1061,6 +1089,9 @@ describe('Lost Drone / One-Way Mission endurance exhaustion (issue W)', () => {
           position: firePosition,
           homeBaseStationId: 'base-1',
           ...droneSpecFixture,
+          // Very high cruise speed so the travel phase completes in <0.01 sim seconds —
+          // these tests care about endurance-exhaustion behavior during orbit, not travel duration.
+          cruiseSpeedMetersPerSecond: 10000,
           maxEnduranceSimSeconds: MAX_ENDURANCE_SIM_SECONDS,
           patrolRadiusMeters: 100,
           patrolSpeedMetersPerSecond: droneLinearSpeedMetersPerSecond,
@@ -1097,18 +1128,30 @@ describe('Lost Drone / One-Way Mission endurance exhaustion (issue W)', () => {
   it("freezes the Drone at exactly wherever its orbit put it at the precise instant endurance ran out, even when a later tick overshoots that instant", () => {
     const dispatched = dispatchedState('oneWay')
     const orbitRadiusMeters = fireOrbitRadiusMetersAt(DISPATCH_AT_SIM_SECONDS, TEST_WIND)
+
+    // Advance 1 sim second to get past the travel phase (cruise = 10000 m/s → arrives in <1s),
+    // then read the exact investigationStartedAtSimSeconds the engine recorded.
+    const arrived = advanceSimulation(dispatched, DISPATCH_AT_SIM_SECONDS + 1)
+    expect(arrived.droneActivity['drone-1']).toMatchObject({ mode: 'investigatingFire' })
+    const { investigationStartedAtSimSeconds } = arrived.droneActivity['drone-1'] as {
+      investigationStartedAtSimSeconds: number
+    }
+
+    // The frozen position must be wherever the orbit formula put the Drone at the
+    // exact instant endurance ran out — derived from the real investigationStartedAtSimSeconds,
+    // not the dispatch time, because a travel phase separates the two.
     const expectedLostPosition = orbitPositionFor(
       firePosition,
       orbitRadiusMeters,
       droneLinearSpeedMetersPerSecond,
-      MAX_ENDURANCE_SIM_SECONDS - DISPATCH_AT_SIM_SECONDS,
+      MAX_ENDURANCE_SIM_SECONDS - investigationStartedAtSimSeconds,
     )
 
     // A real Simulation Clock would tick close to MAX_ENDURANCE_SIM_SECONDS,
     // but this jumps a large, coarse step past it — same "not whatever
     // later tick happened to detect it" instant this behavior is supposed
     // to guarantee regardless of tick granularity.
-    const wayPastExhaustion = advanceSimulation(dispatched, MAX_ENDURANCE_SIM_SECONDS + 500)
+    const wayPastExhaustion = advanceSimulation(arrived, MAX_ENDURANCE_SIM_SECONDS + 500)
 
     expect(wayPastExhaustion.droneActivity['drone-1']).toMatchObject({ mode: 'lost' })
     expect(wayPastExhaustion.dronePatrol['drone-1'].position).toEqual(expectedLostPosition)

@@ -33,6 +33,16 @@ export interface DronePatrolState {
   phaseOffsetRadians: number
   detectionRadiusMeters: number
   maxEnduranceSimSeconds: number
+  /**
+   * Representative cruise speed (m/s) carried through from
+   * `Drone.cruiseSpeedMetersPerSecond` — the same value used by the Return
+   * Envelope and Bingo Range distance-budget math — now also used to govern
+   * the `'travelingToFire'` and `'returningToBase'` transit phases. Kept here
+   * (mirroring `maxEnduranceSimSeconds`/`detectionRadiusMeters`) so
+   * `advanceSimulation.ts` never needs the full `World` to compute travel
+   * positions or durations.
+   */
+  cruiseSpeedMetersPerSecond: number
   position: LatLng
 }
 
@@ -100,6 +110,27 @@ export type FireMissionKind = 'roundTrip' | 'oneWay'
 export type DroneActivityState =
   | { mode: 'patrolling' }
   | { mode: 'investigating'; assignedEventId: string; investigationStartedAtSimSeconds: number }
+  /**
+   * Transit state entered the instant the operator dispatches a Drone to a
+   * Fire (`withManualFireDispatch`): the Drone flies straight toward the
+   * Fire's orbit-entry point at `DronePatrolState.cruiseSpeedMetersPerSecond`,
+   * linearly interpolating from `departurePosition` (its position at dispatch
+   * time) to the orbit-entry point. `orbitRadiusMeters` is snapshotted at
+   * dispatch (same as the `'investigatingFire'` variant below, for the same
+   * "fixed for this investigation's whole duration" reason). Transitions to
+   * `'investigatingFire'` (via `activityAfterInvestigationExpiry`) the tick
+   * the elapsed travel time meets or exceeds the distance ÷ cruise-speed
+   * travel duration. `missionKind` is carried through so the correct ending
+   * condition is applied once the orbit begins.
+   */
+  | {
+      mode: 'travelingToFire'
+      assignedFireId: string
+      departurePosition: LatLng
+      departureSimSeconds: number
+      missionKind: FireMissionKind
+      orbitRadiusMeters: number
+    }
   | {
       mode: 'investigatingFire'
       assignedFireId: string
@@ -108,17 +139,28 @@ export type DroneActivityState =
       orbitRadiusMeters: number
     }
   /**
+   * Return-flight state entered once a `'roundTrip'` Drone's single orbit lap
+   * completes: the Drone flies straight from the orbit-exit point back toward
+   * its `DronePatrolState.patrolCenter` at `cruiseSpeedMetersPerSecond`,
+   * linearly interpolating from `departurePosition` (the orbit-exit point).
+   * Transitions to `'patrolling'` (via `activityAfterInvestigationExpiry`)
+   * the tick the elapsed return time meets or exceeds the distance ÷ cruise-
+   * speed return duration.
+   */
+  | {
+      mode: 'returningToBase'
+      departurePosition: LatLng
+      returnStartedAtSimSeconds: number
+    }
+  /**
    * Terminal state (issue W, `CONTEXT.md`'s **Lost** entry) a `'oneWay'`
-   * `'investigatingFire'` Drone falls into the instant its live
-   * `remainingEnduranceSimSeconds` hits zero. `position` is a frozen
-   * snapshot — *not* re-derived every tick like every other mode's
-   * position — of exactly where the Drone's orbit put it at that precise
-   * moment (`lostAtSimSeconds`, which always equals that Drone's own
-   * `maxEnduranceSimSeconds`, the absolute `elapsedSimSeconds` endurance
-   * hit zero — not whatever later tick `advanceSimulation` happened to
-   * next be called for, which may have overshot it). Once `'lost'`, a
-   * Drone never leaves this mode (see `advanceSimulation.ts`'s
-   * `activityAfterInvestigationExpiry`) — same monotonic/sticky spirit as
+   * Drone falls into the instant its live `remainingEnduranceSimSeconds` hits
+   * zero — whether it was still `'travelingToFire'` or already
+   * `'investigatingFire'` at that moment. `position` is a frozen snapshot of
+   * exactly where the Drone was at `lostAtSimSeconds` (= its own
+   * `maxEnduranceSimSeconds`) — not whatever later tick `advanceSimulation`
+   * happened to next be called for, which may have overshot it. Once `'lost'`,
+   * a Drone never leaves this mode — same monotonic/sticky spirit as
    * `EventStatus`'s `'resolved'`/`FireTier`'s `'investigated'`.
    */
   | { mode: 'lost'; position: LatLng; lostAtSimSeconds: number }

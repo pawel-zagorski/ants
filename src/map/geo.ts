@@ -177,6 +177,20 @@ export function returnEnvelopeEllipseRing(
   return ring
 }
 
+/**
+ * Linear interpolation between two `LatLng` points at fraction `t` ∈ [0, 1]
+ * (0 = `a`, 1 = `b`, values outside this range extrapolate). Uses the same
+ * flat-earth approximation as every other helper in this file — accurate
+ * enough for the hundreds-to-low-thousands-of-meter transit distances this
+ * engine produces during Drone travel phases.
+ */
+export function interpolateLatLng(a: LatLng, b: LatLng, t: number): LatLng {
+  return {
+    lat: a.lat + (b.lat - a.lat) * t,
+    lng: a.lng + (b.lng - a.lng) * t,
+  }
+}
+
 /** Reshapes a `LatLngBounds` into the `[lat, lng]` corner tuples react-leaflet expects. */
 export function toLeafletBounds(bounds: LatLngBounds): [[number, number], [number, number]] {
   return [

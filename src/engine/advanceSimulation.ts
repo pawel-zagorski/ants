@@ -1,4 +1,4 @@
-import { distanceMetersBetween, pointOnCircle, tangentialSpeedMetersPerSecond } from '../map/geo'
+import { distanceMetersBetween, interpolateLatLng, pointOnCircle, tangentialSpeedMetersPerSecond } from '../map/geo'
 import type { LatLng } from '../map/geo'
 import { INVESTIGATION_DURATION_SIM_SECONDS, investigatePositionFor } from './dispatch'
 import { fireFootprintHexCells, fireOrbitRadiusMetersAt } from './growthEllipse'
@@ -488,11 +488,115 @@ function activityAfterInvestigationExpiry(
   patrol: DronePatrolState,
   incomingFires: Record<string, FireRuntimeState>,
 ): DroneActivityState {
+  const next = activityAfterOneTransition(incomingActivity, elapsedSimSeconds, patrol, incomingFires)
+
+  // A large time jump can skip multiple phases in one tick (e.g. travelling →
+  // arrived → orbit complete → returned). Keep applying transitions until the
+  // state stabilises (same reference = no change, or a terminal state).
+  if (next !== incomingActivity && next.mode !== 'patrolling' && next.mode !== 'lost') {
+    return activityAfterInvestigationExpiry(next, elapsedSimSeconds, patrol, incomingFires)
+  }
+
+  return next
+}
+
+function activityAfterOneTransition(
+  incomingActivity: DroneActivityState | undefined,
+  elapsedSimSeconds: number,
+  patrol: DronePatrolState,
+  incomingFires: Record<string, FireRuntimeState>,
+): DroneActivityState {
   if (!incomingActivity || incomingActivity.mode === 'patrolling') {
     return { mode: 'patrolling' }
   }
 
   if (incomingActivity.mode === 'lost') {
+    return incomingActivity
+  }
+
+  if (incomingActivity.mode === 'travelingToFire') {
+    // For a One-Way Mission, check whether this Drone has exhausted its
+    // endurance before even reaching the Fire — same terminal condition as
+    // `droneActivityAfterLostCheck`, just applied during transit rather than
+    // during orbit.
+    if (incomingActivity.missionKind === 'oneWay') {
+      const remaining = remainingEnduranceSimSecondsAt(elapsedSimSeconds, patrol.maxEnduranceSimSeconds)
+      if (remaining <= 0) {
+        const lostAtSimSeconds = patrol.maxEnduranceSimSeconds
+        const assignedFire = incomingFires[incomingActivity.assignedFireId]
+        const orbitEntryPosition = assignedFire
+          ? orbitPositionFor(assignedFire.position, incomingActivity.orbitRadiusMeters, patrolLinearSpeedMetersPerSecond(patrol), 0)
+          : incomingActivity.departurePosition
+        const travelDistance = distanceMetersBetween(incomingActivity.departurePosition, orbitEntryPosition)
+        const travelDuration =
+          travelDistance > 0 && patrol.cruiseSpeedMetersPerSecond > 0
+            ? travelDistance / patrol.cruiseSpeedMetersPerSecond
+            : 0
+        const secondsSinceDeparture = lostAtSimSeconds - incomingActivity.departureSimSeconds
+        const progress = travelDuration > 0 ? Math.min(1, secondsSinceDeparture / travelDuration) : 1
+        const position = interpolateLatLng(incomingActivity.departurePosition, orbitEntryPosition, progress)
+        return { mode: 'lost', position, lostAtSimSeconds }
+      }
+    }
+
+    const assignedFire = incomingFires[incomingActivity.assignedFireId]
+    if (!assignedFire) {
+      // Defensive fallback: assigned Fire no longer exists (should not happen
+      // once spawned, but keep this total rather than throwing).
+      return { mode: 'patrolling' }
+    }
+
+    const orbitEntryPosition = orbitPositionFor(
+      assignedFire.position,
+      incomingActivity.orbitRadiusMeters,
+      patrolLinearSpeedMetersPerSecond(patrol),
+      0,
+    )
+    const travelDistance = distanceMetersBetween(incomingActivity.departurePosition, orbitEntryPosition)
+
+    if (travelDistance <= 0 || patrol.cruiseSpeedMetersPerSecond <= 0) {
+      // Already at orbit entry (zero-distance travel or zero cruise speed):
+      // begin orbit immediately.
+      return {
+        mode: 'investigatingFire',
+        assignedFireId: incomingActivity.assignedFireId,
+        investigationStartedAtSimSeconds: incomingActivity.departureSimSeconds,
+        missionKind: incomingActivity.missionKind,
+        orbitRadiusMeters: incomingActivity.orbitRadiusMeters,
+      }
+    }
+
+    const travelDuration = travelDistance / patrol.cruiseSpeedMetersPerSecond
+    const secondsSinceDeparture = elapsedSimSeconds - incomingActivity.departureSimSeconds
+
+    if (secondsSinceDeparture >= travelDuration) {
+      const arrivalSimSeconds = incomingActivity.departureSimSeconds + travelDuration
+      return {
+        mode: 'investigatingFire',
+        assignedFireId: incomingActivity.assignedFireId,
+        investigationStartedAtSimSeconds: arrivalSimSeconds,
+        missionKind: incomingActivity.missionKind,
+        orbitRadiusMeters: incomingActivity.orbitRadiusMeters,
+      }
+    }
+
+    return incomingActivity
+  }
+
+  if (incomingActivity.mode === 'returningToBase') {
+    const returnDistance = distanceMetersBetween(incomingActivity.departurePosition, patrol.patrolCenter)
+
+    if (returnDistance <= 0 || patrol.cruiseSpeedMetersPerSecond <= 0) {
+      return { mode: 'patrolling' }
+    }
+
+    const returnDuration = returnDistance / patrol.cruiseSpeedMetersPerSecond
+    const secondsSinceReturn = elapsedSimSeconds - incomingActivity.returnStartedAtSimSeconds
+
+    if (secondsSinceReturn >= returnDuration) {
+      return { mode: 'patrolling' }
+    }
+
     return incomingActivity
   }
 
@@ -507,7 +611,22 @@ function activityAfterInvestigationExpiry(
       patrolLinearSpeedMetersPerSecond(patrol),
     )
     if (secondsSinceOrbitStarted >= lapDurationSimSeconds) {
-      return { mode: 'patrolling' }
+      const orbitExitPosition = orbitPositionFor(
+        incomingFires[incomingActivity.assignedFireId]?.position ?? patrol.patrolCenter,
+        incomingActivity.orbitRadiusMeters,
+        patrolLinearSpeedMetersPerSecond(patrol),
+        lapDurationSimSeconds,
+      )
+      // Use the exact lap-completion instant so that the chained-transition
+      // recursion in `activityAfterInvestigationExpiry` can correctly measure
+      // how far into the return trip we are on the same tick.
+      const returnStartedAtSimSeconds =
+        incomingActivity.investigationStartedAtSimSeconds + lapDurationSimSeconds
+      return {
+        mode: 'returningToBase',
+        departurePosition: orbitExitPosition,
+        returnStartedAtSimSeconds,
+      }
     }
 
     return incomingActivity
@@ -626,6 +745,19 @@ function positionForActivity(
     }
   }
 
+  if (activity.mode === 'travelingToFire') {
+    const assignedFire = incomingFires[activity.assignedFireId]
+    const orbitEntryPosition = assignedFire
+      ? orbitPositionFor(assignedFire.position, activity.orbitRadiusMeters, patrolLinearSpeedMetersPerSecond(patrol), 0)
+      : activity.departurePosition
+    const travelDistance = distanceMetersBetween(activity.departurePosition, orbitEntryPosition)
+    if (travelDistance <= 0 || patrol.cruiseSpeedMetersPerSecond <= 0) return orbitEntryPosition
+    const travelDuration = travelDistance / patrol.cruiseSpeedMetersPerSecond
+    const secondsSinceDeparture = elapsedSimSeconds - activity.departureSimSeconds
+    const progress = Math.min(1, secondsSinceDeparture / travelDuration)
+    return interpolateLatLng(activity.departurePosition, orbitEntryPosition, progress)
+  }
+
   if (activity.mode === 'investigatingFire') {
     const assignedFire = incomingFires[activity.assignedFireId]
     if (assignedFire) {
@@ -636,6 +768,15 @@ function positionForActivity(
         elapsedSimSeconds - activity.investigationStartedAtSimSeconds,
       )
     }
+  }
+
+  if (activity.mode === 'returningToBase') {
+    const returnDistance = distanceMetersBetween(activity.departurePosition, patrol.patrolCenter)
+    if (returnDistance <= 0 || patrol.cruiseSpeedMetersPerSecond <= 0) return patrol.patrolCenter
+    const returnDuration = returnDistance / patrol.cruiseSpeedMetersPerSecond
+    const secondsSinceReturn = elapsedSimSeconds - activity.returnStartedAtSimSeconds
+    const progress = Math.min(1, secondsSinceReturn / returnDuration)
+    return interpolateLatLng(activity.departurePosition, patrol.patrolCenter, progress)
   }
 
   if (activity.mode === 'lost') {
@@ -760,6 +901,7 @@ export function initializeSimulationState(world: World, scenario: Scenario): Sim
       phaseOffsetRadians,
       detectionRadiusMeters,
       maxEnduranceSimSeconds: drone.maxEnduranceSimSeconds,
+      cruiseSpeedMetersPerSecond: drone.cruiseSpeedMetersPerSecond,
       position: pointOnCircle(patrolCenter, radiusMeters, phaseOffsetRadians),
     }
     initialDroneActivity[drone.id] = { mode: 'patrolling' }
@@ -947,29 +1089,25 @@ export function withManualFireDispatch(
     return state
   }
 
-  const investigationStartedAtSimSeconds = state.elapsedSimSeconds
-  const orbitRadiusMeters = fireOrbitRadiusMetersAt(investigationStartedAtSimSeconds - fire.spawnAtSimSeconds, state.wind)
-  const orbitPosition = orbitPositionFor(fire.position, orbitRadiusMeters, patrolLinearSpeedMetersPerSecond(patrol), 0)
+  const departureSimSeconds = state.elapsedSimSeconds
+  const orbitRadiusMeters = fireOrbitRadiusMetersAt(departureSimSeconds - fire.spawnAtSimSeconds, state.wind)
 
+  // The Drone begins flying toward the Fire at cruise speed; its position is
+  // unchanged on this tick. The fire tier and Confirmed Shape are updated on
+  // the first tick the Drone transitions into 'investigatingFire' (via
+  // fireWithConfirmedShapeApplied / isAnyDroneOrbitingFire).
   return {
     ...state,
-    dronePatrol: {
-      ...state.dronePatrol,
-      [droneId]: { ...patrol, position: orbitPosition },
-    },
     droneActivity: {
       ...state.droneActivity,
       [droneId]: {
-        mode: 'investigatingFire',
+        mode: 'travelingToFire',
         assignedFireId: fireId,
-        investigationStartedAtSimSeconds,
+        departurePosition: patrol.position,
+        departureSimSeconds,
         missionKind,
         orbitRadiusMeters,
       },
-    },
-    fires: {
-      ...state.fires,
-      [fireId]: fireWithOrbitStarted(fire, state.elapsedSimSeconds, state.wind),
     },
   }
 }
