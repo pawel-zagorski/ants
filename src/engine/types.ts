@@ -6,16 +6,24 @@ import type { DroneType } from '../world/types'
 /**
  * A single Drone's patrol loop and current derived position. `droneType`,
  * `patrolCenter`, `patrolRadiusMeters`, `angularSpeedRadiansPerSecond`,
- * `phaseOffsetRadians`, and `detectionRadiusMeters` are fixed for the
- * lifetime of a {@link SimulationState} (derived once from the World in
- * `initializeSimulationState`) — only `position` changes as simulated time
- * advances. `position` is a closed-form function of `elapsedSimSeconds`
- * alone *while patrolling*; once dispatched to investigate (see
- * `DroneActivityState`), `advanceSimulation` instead derives it from the
- * assigned Event's position and time-since-investigation-started — see
- * `investigatePositionFor` in `advanceSimulation.ts`. `droneType` is what
- * lets that investigate math pick hover (Quadrocopter) vs. circle
- * (Fixed-Wing Drone).
+ * `phaseOffsetRadians`, `detectionRadiusMeters`, and `maxEnduranceSimSeconds`
+ * are fixed for the lifetime of a {@link SimulationState} (derived once
+ * from the World in `initializeSimulationState`) — only `position` changes
+ * as simulated time advances. `position` is a closed-form function of
+ * `elapsedSimSeconds` alone *while patrolling*; once dispatched to
+ * investigate (see `DroneActivityState`), `advanceSimulation` instead
+ * derives it from the assigned Event's position and
+ * time-since-investigation-started — see `investigatePositionFor` in
+ * `advanceSimulation.ts`. `droneType` is what lets that investigate math
+ * pick hover (Quadrocopter) vs. circle (Fixed-Wing Drone).
+ * `maxEnduranceSimSeconds` (issue W) is this Drone's own
+ * `Drone.maxEnduranceSimSeconds`, carried through here specifically so
+ * `advanceSimulation.ts`'s `activityAfterInvestigationExpiry` can check a
+ * `'oneWay'` `'investigatingFire'` Drone's *live* remaining endurance
+ * (`telemetry.ts`'s `remainingEnduranceSimSecondsAt`) tick-over-tick without
+ * needing the full `World` threaded through `advanceSimulation` itself —
+ * mirrors why `detectionRadiusMeters` already lives here rather than being
+ * re-looked-up from `World` on every tick.
  */
 export interface DronePatrolState {
   droneType: DroneType
@@ -24,6 +32,7 @@ export interface DronePatrolState {
   angularSpeedRadiansPerSecond: number
   phaseOffsetRadians: number
   detectionRadiusMeters: number
+  maxEnduranceSimSeconds: number
   position: LatLng
 }
 
@@ -77,12 +86,16 @@ export type FireMissionKind = 'roundTrip' | 'oneWay'
  * (`FireMissionKind`) investigation ends after one full orbit lap
  * (`engine/orbit.ts`'s `orbitLapDurationSimSeconds`, checked in
  * `advanceSimulation.ts`'s `activityAfterInvestigationExpiry`), while a
- * `'oneWay'` investigation has no ending condition *yet* — it stays sticky
- * (carried forward unchanged) forever until issue W adds its
- * endurance-exhaustion ending. Deliberately an extensible union rather
- * than a boolean flag: issue G's battery/endurance telemetry already added
- * `'investigating'`'s sibling modes this way, and issue W is expected to
- * add a further one (e.g. `'lost'`) without a breaking change here.
+ * `'oneWay'` investigation instead ends the instant its Drone's *live*
+ * `remainingEnduranceSimSeconds` (`telemetry.ts`'s
+ * `remainingEnduranceSimSecondsAt`) reaches zero (issue W, ADR-0006's "the
+ * only place endurance is allowed to gate/end a Drone's behavior") — see
+ * `'lost'` below. `'lost'` is deliberately its own terminal variant rather
+ * than a flag on `'investigatingFire'`: issue G's battery/endurance
+ * telemetry already grew `'investigating'`'s sibling modes this same
+ * extensible-union way, and once `'lost'`, a Drone carries no
+ * `assignedFireId`/`missionKind` at all — it is no longer investigating
+ * anything, permanently.
  */
 export type DroneActivityState =
   | { mode: 'patrolling' }
@@ -94,6 +107,21 @@ export type DroneActivityState =
       missionKind: FireMissionKind
       orbitRadiusMeters: number
     }
+  /**
+   * Terminal state (issue W, `CONTEXT.md`'s **Lost** entry) a `'oneWay'`
+   * `'investigatingFire'` Drone falls into the instant its live
+   * `remainingEnduranceSimSeconds` hits zero. `position` is a frozen
+   * snapshot — *not* re-derived every tick like every other mode's
+   * position — of exactly where the Drone's orbit put it at that precise
+   * moment (`lostAtSimSeconds`, which always equals that Drone's own
+   * `maxEnduranceSimSeconds`, the absolute `elapsedSimSeconds` endurance
+   * hit zero — not whatever later tick `advanceSimulation` happened to
+   * next be called for, which may have overshot it). Once `'lost'`, a
+   * Drone never leaves this mode (see `advanceSimulation.ts`'s
+   * `activityAfterInvestigationExpiry`) — same monotonic/sticky spirit as
+   * `EventStatus`'s `'resolved'`/`FireTier`'s `'investigated'`.
+   */
+  | { mode: 'lost'; position: LatLng; lostAtSimSeconds: number }
 
 /**
  * A Tower's fixed position and detection radius, carried through

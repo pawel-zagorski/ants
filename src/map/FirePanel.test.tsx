@@ -38,6 +38,7 @@ function patrolFixture(overrides: Partial<DronePatrolState> = {}): DronePatrolSt
     angularSpeedRadiansPerSecond: 0.032,
     phaseOffsetRadians: 0,
     detectionRadiusMeters: 500,
+    maxEnduranceSimSeconds: 7200,
     position: towerDetectedFire.position,
     ...overrides,
   }
@@ -263,6 +264,43 @@ describe('FirePanel Bingo Range / One-Way Mission lists (issue U)', () => {
     )
 
     expect(screen.queryByText('busy-drone')).toBeNull()
+  })
+
+  it('excludes a Lost Drone (issue W) from both lists — never even classified, just excluded outright', () => {
+    const lostDrone: Drone = {
+      id: 'lost-drone',
+      type: 'Quadrocopter',
+      position: towerDetectedFire.position,
+      homeBaseStationId: 'base-1',
+      ...droneSpecFixture,
+      cruiseSpeedMetersPerSecond: 20,
+      maxEnduranceSimSeconds: 7200,
+    }
+    const lostActivity: DroneActivityState = {
+      mode: 'lost',
+      position: towerDetectedFire.position,
+      lostAtSimSeconds: 7200,
+    }
+    const simulationState = simulationStateFixture({
+      dronePatrol: { 'lost-drone': patrolFixture() },
+      droneActivity: { 'lost-drone': lostActivity },
+    })
+
+    render(
+      <FirePanel
+        fire={towerDetectedFire}
+        simulationState={simulationState}
+        drones={[lostDrone]}
+        baseStations={[nearBaseStation]}
+        wind={windFixture}
+        onSend={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByText('lost-drone')).toBeNull()
+    expect(screen.getByText(/no drones? currently in bingo range/i)).toBeInTheDocument()
+    expect(screen.getByText(/no drones? available for a one-way mission/i)).toBeInTheDocument()
   })
 
   it('shows a message instead of a list when no Drone qualifies for a given list', () => {

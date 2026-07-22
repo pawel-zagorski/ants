@@ -15,6 +15,7 @@ const patrollingQuadrocopter: DronePatrolState = {
   angularSpeedRadiansPerSecond: 0.032,
   phaseOffsetRadians: 0,
   detectionRadiusMeters: 500,
+  maxEnduranceSimSeconds: MAX_ENDURANCE_SIM_SECONDS,
   position: { lat: 64.5, lng: 26.2529 },
 }
 
@@ -178,6 +179,44 @@ describe('droneTelemetryFor — investigatingFire (issue U)', () => {
 
     expect(telemetry.speedMetersPerSecond).toBeGreaterThan(0)
     expect(telemetry.headingDegrees).toBeGreaterThanOrEqual(0)
+  })
+})
+
+describe('droneTelemetryFor — lost (issue W)', () => {
+  const lostPosition = { lat: 64.6, lng: 26.4 }
+  const lostActivity: DroneActivityState = { mode: 'lost', position: lostPosition, lostAtSimSeconds: MAX_ENDURANCE_SIM_SECONDS }
+
+  it('reports state "lost" and the frozen position, not the patrol loop\'s own position', () => {
+    const telemetry = droneTelemetryFor(patrollingQuadrocopter, lostActivity, MAX_ENDURANCE_SIM_SECONDS, MAX_ENDURANCE_SIM_SECONDS)
+
+    expect(telemetry.state).toBe('lost')
+    expect(telemetry.position).toEqual(lostPosition)
+    expect(telemetry.position).not.toEqual(patrollingQuadrocopter.position)
+  })
+
+  it('reports zero speed and no heading — a Lost Drone has stopped moving', () => {
+    const telemetry = droneTelemetryFor(patrollingQuadrocopter, lostActivity, MAX_ENDURANCE_SIM_SECONDS, MAX_ENDURANCE_SIM_SECONDS)
+
+    expect(telemetry.speedMetersPerSecond).toBe(0)
+    expect(telemetry.headingDegrees).toBeUndefined()
+  })
+
+  it('reports zero remaining endurance and 0% battery, at exactly the exhaustion instant and long after', () => {
+    const atExhaustion = droneTelemetryFor(patrollingQuadrocopter, lostActivity, MAX_ENDURANCE_SIM_SECONDS, MAX_ENDURANCE_SIM_SECONDS)
+    const muchLater = droneTelemetryFor(patrollingQuadrocopter, lostActivity, MAX_ENDURANCE_SIM_SECONDS + 10_000, MAX_ENDURANCE_SIM_SECONDS)
+
+    expect(atExhaustion.remainingEnduranceSimSeconds).toBe(0)
+    expect(atExhaustion.batteryPercent).toBe(0)
+    expect(muchLater.remainingEnduranceSimSeconds).toBe(0)
+    expect(muchLater.batteryPercent).toBe(0)
+  })
+
+  it('reports no assigned Event/Fire — a Lost Drone is not investigating anything anymore', () => {
+    const telemetry = droneTelemetryFor(patrollingQuadrocopter, lostActivity, MAX_ENDURANCE_SIM_SECONDS, MAX_ENDURANCE_SIM_SECONDS)
+
+    expect(telemetry.assignedEventId).toBeUndefined()
+    expect(telemetry.assignedFireId).toBeUndefined()
+    expect(telemetry.missionKind).toBeUndefined()
   })
 })
 

@@ -172,6 +172,27 @@ describe('EventPanel available Drones list (issue O)', () => {
     expect(onSend).toHaveBeenCalledExactlyOnceWith('drone-2')
   })
 
+  it('excludes a Lost Drone (issue W) from the list, the same way an investigating one is excluded', () => {
+    const lostActivity: DroneActivityState = { mode: 'lost', position: { lat: 64.6, lng: 26.4 }, lostAtSimSeconds: 100 }
+    const simulationState = simulationStateFixture({
+      droneActivity: { 'drone-1': { mode: 'patrolling' }, 'drone-2': lostActivity },
+    })
+
+    render(
+      <EventPanel
+        event={detectedFallenTree}
+        simulationState={simulationState}
+        drones={[quadrocopter, fixedWingDrone]}
+        onSend={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('drone-1')).toBeInTheDocument()
+    expect(screen.queryByText('drone-2')).toBeNull()
+    expect(screen.getAllByRole('button', { name: 'Send' })).toHaveLength(1)
+  })
+
   it('treats a Drone missing from droneActivity as available (defaults to patrolling)', () => {
     render(
       <EventPanel

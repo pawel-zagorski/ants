@@ -121,8 +121,14 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
   // panel is open — mirrors `AssetPanel`'s own conditional-render pattern
   // above, and reads the same live, shrinking-over-time
   // `remainingEnduranceSimSeconds` the panel does (via `droneTelemetryFor`).
+  // Excludes a `'lost'` Drone (issue W) entirely, rather than rendering a
+  // (now-permanently-zero-budget) degenerate envelope: a Lost Drone will
+  // never return to any Base Station, so there is nothing meaningful for
+  // this overlay to show.
+  const selectedDroneIsLost =
+    selectedAsset !== null && clock.simulationState.droneActivity[selectedAsset.id]?.mode === 'lost'
   const selectedDroneRemainingEnduranceSimSeconds =
-    selectedAsset && isDroneAsset(selectedAsset)
+    selectedAsset && isDroneAsset(selectedAsset) && !selectedDroneIsLost
       ? droneTelemetryFor(
           clock.simulationState.dronePatrol[selectedAsset.id],
           clock.simulationState.droneActivity[selectedAsset.id],
@@ -134,9 +140,10 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
   return (
     <MapContainer bounds={toLeafletBounds(world.bounds)} className="rokua-map">
       <TileLayer url={OSM_TILE_URL} attribution={OSM_ATTRIBUTION} />
-      <DatalinkLines world={liveWorld} />
+      <DatalinkLines world={liveWorld} droneActivity={clock.simulationState.droneActivity} />
       <AssetMarkers
         world={liveWorld}
+        droneActivity={clock.simulationState.droneActivity}
         onSelect={(asset) => {
           setSelectedAssetId(asset.id)
           setSelectedEventId(null)

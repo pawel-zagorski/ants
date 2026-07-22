@@ -82,12 +82,13 @@ function formatDetectedAt(detectedAtSimSeconds: number, startDateTimeIso: string
  * `droneTelemetryFor`, the same live value `ReturnEnvelope`/`AssetPanel`
  * read). A Drone classified `'unreachable'` — cannot even reach the Fire
  * one-way — is dropped from both lists entirely, per the acceptance
- * criteria; there's no third list rendered for it. There's deliberately no
- * "Lost" exclusion here (issue W): that Drone state doesn't exist yet in
- * this slice, so nothing needs to special-case it — once issue W adds it,
- * a Lost Drone will land in a `droneActivity` mode other than
- * `'patrolling'` and fall out of `availableDrones` the same way an
- * investigating one already does today, with no change needed here.
+ * criteria; there's no third list rendered for it. There's no separate
+ * "Lost" exclusion needed here either (issue W): a Lost Drone's
+ * `droneActivity[id].mode` is `'lost'`, which the `activity.mode !==
+ * 'patrolling'` check above already treats as unavailable — it falls out
+ * of both lists (and is never even passed to `classifyFireDispatch`) the
+ * same way an already-investigating Drone does, with no change needed
+ * here (see `engine/types.ts`'s `DroneActivityState` `'lost'` variant).
  *
  * `wind` (issue V) feeds `growthEllipse.ts`'s `fireOrbitRadiusMetersAt`:
  * this Fire's *real* current orbit radius, evaluated at its elapsed time

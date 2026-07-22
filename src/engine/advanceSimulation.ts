@@ -3,6 +3,7 @@ import type { LatLng } from '../map/geo'
 import { INVESTIGATION_DURATION_SIM_SECONDS, investigatePositionFor } from './dispatch'
 import { fireFootprintHexCells, fireOrbitRadiusMetersAt } from './growthEllipse'
 import { orbitLapDurationSimSeconds, orbitPositionFor } from './orbit'
+import { remainingEnduranceSimSecondsAt } from './telemetry'
 import type { Scenario, ScenarioEntry, ScenarioEvent, ScenarioFireIgnition, Wind } from '../scenario/types'
 import type { BaseStation, DroneType, World } from '../world/types'
 import type {
@@ -464,26 +465,40 @@ function patrolLinearSpeedMetersPerSecond(patrol: DronePatrolState): number {
  *   `'patrolling'` — mirroring the Event-investigation pattern above, just
  *   with a lap-based condition instead of a fixed timer (PRD user story
  *   33).
- * - `'oneWay'` (One-Way Mission): deliberately left untouched here — issue
- *   W (not this one) gives it a real ending (endurance exhaustion ->
- *   Lost); until then it stays `'investigatingFire'` forever, same
- *   "sticky, carried forward unchanged" treatment `eventWithDetectionApplied`
- *   gives an already-`'detected'` Event.
+ * - `'oneWay'` (One-Way Mission): ends the instant its Drone's *live*
+ *   `remainingEnduranceSimSeconds` (`telemetry.ts`'s
+ *   `remainingEnduranceSimSecondsAt`, fed this Drone's own
+ *   `patrol.maxEnduranceSimSeconds`) reaches zero — issue W, ADR-0006 —
+ *   transitioning permanently to `'lost'` (see {@link droneActivityAfterLostCheck}
+ *   for exactly how the frozen position/instant are computed). Before
+ *   that instant, stays `'investigatingFire'` (sticky, carried forward
+ *   unchanged), same "no ending yet" treatment `eventWithDetectionApplied`
+ *   gives an already-`'detected'` Event awaiting resolution.
+ * - `'lost'`: terminal — always carried forward unchanged, never
+ *   re-derived, same monotonic spirit as an already-`'resolved'` Event.
  *
- * Missing/`'patrolling'` input passes through unchanged.
+ * Missing/`'patrolling'` input passes through unchanged. `incomingFires` is
+ * needed only for the `'oneWay'`-exhaustion case above, to look up the
+ * assigned Fire's (fixed, never-moving) ignition point for that frozen
+ * position.
  */
 function activityAfterInvestigationExpiry(
   incomingActivity: DroneActivityState | undefined,
   elapsedSimSeconds: number,
   patrol: DronePatrolState,
+  incomingFires: Record<string, FireRuntimeState>,
 ): DroneActivityState {
   if (!incomingActivity || incomingActivity.mode === 'patrolling') {
     return { mode: 'patrolling' }
   }
 
+  if (incomingActivity.mode === 'lost') {
+    return incomingActivity
+  }
+
   if (incomingActivity.mode === 'investigatingFire') {
     if (incomingActivity.missionKind === 'oneWay') {
-      return incomingActivity
+      return droneActivityAfterLostCheck(incomingActivity, elapsedSimSeconds, patrol, incomingFires)
     }
 
     const secondsSinceOrbitStarted = elapsedSimSeconds - incomingActivity.investigationStartedAtSimSeconds
@@ -504,6 +519,53 @@ function activityAfterInvestigationExpiry(
   }
 
   return incomingActivity
+}
+
+/**
+ * A `'oneWay'` `'investigatingFire'` Drone's activity after checking
+ * whether its live endurance has run out by `elapsedSimSeconds` — issue W,
+ * ADR-0006's "the only place endurance is allowed to gate/end a Drone's
+ * behavior". While `remainingEnduranceSimSecondsAt(elapsedSimSeconds,
+ * patrol.maxEnduranceSimSeconds)` is still positive, `activity` is carried
+ * forward unchanged (same sticky treatment as a still-orbiting
+ * `'roundTrip'` mission). The instant it reaches zero, transitions to
+ * `'lost'`, frozen at exactly where the orbit put this Drone at
+ * `lostAtSimSeconds = patrol.maxEnduranceSimSeconds` — deliberately that
+ * exact absolute instant, not whatever (possibly later/overshot)
+ * `elapsedSimSeconds` this call happens to be for, mirroring how
+ * `orbitRadiusMeters` is itself a fixed dispatch-time snapshot rather than
+ * a live recompute: "wherever it was on its orbit at the moment it ran
+ * out" (issue W) means evaluating the same closed-form orbit position
+ * function at that precise moment, not at the tick that happened to
+ * *detect* it. Falls back to this Drone's last-known `patrol.position` if
+ * the assigned Fire is somehow missing from `incomingFires` (shouldn't
+ * happen — a Fire's own id never disappears once spawned — but keeps this
+ * total rather than throwing, same defensive spirit as
+ * `positionForActivity`'s own fallback).
+ */
+function droneActivityAfterLostCheck(
+  activity: Extract<DroneActivityState, { mode: 'investigatingFire' }>,
+  elapsedSimSeconds: number,
+  patrol: DronePatrolState,
+  incomingFires: Record<string, FireRuntimeState>,
+): DroneActivityState {
+  const remainingEnduranceSimSeconds = remainingEnduranceSimSecondsAt(elapsedSimSeconds, patrol.maxEnduranceSimSeconds)
+  if (remainingEnduranceSimSeconds > 0) {
+    return activity
+  }
+
+  const lostAtSimSeconds = patrol.maxEnduranceSimSeconds
+  const assignedFire = incomingFires[activity.assignedFireId]
+  const position = assignedFire
+    ? orbitPositionFor(
+        assignedFire.position,
+        activity.orbitRadiusMeters,
+        patrolLinearSpeedMetersPerSecond(patrol),
+        lostAtSimSeconds - activity.investigationStartedAtSimSeconds,
+      )
+    : patrol.position
+
+  return { mode: 'lost', position, lostAtSimSeconds }
 }
 
 /**
@@ -539,6 +601,12 @@ export function patrolAngleRadiansAt(patrol: DronePatrolState, elapsedSimSeconds
  * `incomingEvents`/`incomingFires`, which should not happen in practice
  * (dispatch only ever assigns an id already present in that tick's
  * `events`/`fires`) but keeps this function total rather than throwing.
+ * `'lost'` (issue W) is a frozen snapshot, not a closed-form function of
+ * `elapsedSimSeconds` at all — its `activity.position` was already
+ * computed once, the tick it transitioned into `'lost'` (see
+ * `droneActivityAfterLostCheck`), and is simply read back verbatim on
+ * every subsequent tick, never recomputed — this is what "stops moving,
+ * wherever it currently is" actually means at this engine seam.
  */
 function positionForActivity(
   patrol: DronePatrolState,
@@ -568,6 +636,10 @@ function positionForActivity(
         elapsedSimSeconds - activity.investigationStartedAtSimSeconds,
       )
     }
+  }
+
+  if (activity.mode === 'lost') {
+    return activity.position
   }
 
   const angleRadians = patrolAngleRadiansAt(patrol, elapsedSimSeconds)
@@ -631,7 +703,12 @@ function deriveDronesEventsAndFires(
 } {
   const droneActivity: Record<string, DroneActivityState> = {}
   for (const [droneId, patrol] of Object.entries(dronePatrolParams)) {
-    droneActivity[droneId] = activityAfterInvestigationExpiry(incomingDroneActivity[droneId], elapsedSimSeconds, patrol)
+    droneActivity[droneId] = activityAfterInvestigationExpiry(
+      incomingDroneActivity[droneId],
+      elapsedSimSeconds,
+      patrol,
+      incomingFires,
+    )
   }
 
   const dronePatrol: Record<string, DronePatrolState> = {}
@@ -682,6 +759,7 @@ export function initializeSimulationState(world: World, scenario: Scenario): Sim
       angularSpeedRadiansPerSecond: linearSpeedMetersPerSecond / radiusMeters,
       phaseOffsetRadians,
       detectionRadiusMeters,
+      maxEnduranceSimSeconds: drone.maxEnduranceSimSeconds,
       position: pointOnCircle(patrolCenter, radiusMeters, phaseOffsetRadians),
     }
     initialDroneActivity[drone.id] = { mode: 'patrolling' }

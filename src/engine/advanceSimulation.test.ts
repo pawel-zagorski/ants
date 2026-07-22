@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { advanceSimulation, initializeSimulationState, withManualDispatch, withManualFireDispatch } from './advanceSimulation'
 import { INVESTIGATION_DURATION_SIM_SECONDS } from './dispatch'
 import { fireFootprintHexCells, fireOrbitRadiusMetersAt } from './growthEllipse'
-import { orbitLapDurationSimSeconds } from './orbit'
+import { orbitLapDurationSimSeconds, orbitPositionFor } from './orbit'
 import { haversineDistanceMeters } from '../test/haversineDistanceMeters'
 import { createWorldFixture, droneSpecFixture, windFixture } from '../test/worldFixtures'
 import type { Scenario } from '../scenario/types'
@@ -1014,6 +1014,133 @@ describe('Fire orbit / Confirmed Shape (issue V)', () => {
 
     expect(wayPastOneLap.droneActivity['drone-1']).toMatchObject({ mode: 'investigatingFire', missionKind: 'oneWay' })
     expect(wayPastOneLap.fires['fire-1'].confirmedAtSimSeconds).toBe(DISPATCH_AT_SIM_SECONDS + lapDurationSimSeconds * 5)
+  })
+})
+
+describe('Lost Drone / One-Way Mission endurance exhaustion (issue W)', () => {
+  const firePosition = { lat: 64.55, lng: 26.25 }
+  const droneLinearSpeedMetersPerSecond = 10
+  // Dispatched at t=100 (not 0), same non-degenerate-orbit-radius rationale
+  // as the issue V block above. Deliberately small (105 sim seconds), just
+  // 5s past dispatch, so exhaustion is reached well before this Drone's
+  // orbit lap would otherwise complete on its own (~31s at this radius/
+  // speed — see the "does not apply to a roundTrip mission" test below).
+  const DISPATCH_AT_SIM_SECONDS = 100
+  const MAX_ENDURANCE_SIM_SECONDS = 105
+
+  function towerDetectedFireScenario(): Scenario {
+    return { events: [{ id: 'fire-1', type: 'Fire', position: firePosition, spawnAtSimSeconds: 0 }], wind: TEST_WIND }
+  }
+
+  function worldWithOrbitingDrone(): World {
+    return createWorldFixture({
+      towers: [{ id: 'tower-1', type: 'Tower', position: firePosition, detectionRadiusMeters: 500 }],
+      baseStations: [{ id: 'base-1', type: 'BaseStation', position: firePosition }],
+      drones: [
+        {
+          id: 'drone-1',
+          type: 'Quadrocopter',
+          position: firePosition,
+          homeBaseStationId: 'base-1',
+          ...droneSpecFixture,
+          maxEnduranceSimSeconds: MAX_ENDURANCE_SIM_SECONDS,
+          patrolRadiusMeters: 100,
+          patrolSpeedMetersPerSecond: droneLinearSpeedMetersPerSecond,
+          detectionRadiusMeters: 500,
+        },
+      ],
+    })
+  }
+
+  function dispatchedState(missionKind: 'roundTrip' | 'oneWay' = 'oneWay'): SimulationState {
+    const state = advanceSimulation(
+      initializeSimulationState(worldWithOrbitingDrone(), towerDetectedFireScenario()),
+      DISPATCH_AT_SIM_SECONDS,
+    )
+    return withManualFireDispatch(state, 'drone-1', 'fire-1', missionKind)
+  }
+
+  it('stays "investigatingFire" the instant before remainingEnduranceSimSeconds would reach zero', () => {
+    const dispatched = dispatchedState('oneWay')
+
+    const justBefore = advanceSimulation(dispatched, MAX_ENDURANCE_SIM_SECONDS - 1)
+
+    expect(justBefore.droneActivity['drone-1']).toMatchObject({ mode: 'investigatingFire', missionKind: 'oneWay' })
+  })
+
+  it('transitions to "lost" the exact tick remainingEnduranceSimSeconds reaches zero — not one tick early', () => {
+    const dispatched = dispatchedState('oneWay')
+
+    const atExhaustion = advanceSimulation(dispatched, MAX_ENDURANCE_SIM_SECONDS)
+
+    expect(atExhaustion.droneActivity['drone-1']).toMatchObject({ mode: 'lost', lostAtSimSeconds: MAX_ENDURANCE_SIM_SECONDS })
+  })
+
+  it("freezes the Drone at exactly wherever its orbit put it at the precise instant endurance ran out, even when a later tick overshoots that instant", () => {
+    const dispatched = dispatchedState('oneWay')
+    const orbitRadiusMeters = fireOrbitRadiusMetersAt(DISPATCH_AT_SIM_SECONDS, TEST_WIND)
+    const expectedLostPosition = orbitPositionFor(
+      firePosition,
+      orbitRadiusMeters,
+      droneLinearSpeedMetersPerSecond,
+      MAX_ENDURANCE_SIM_SECONDS - DISPATCH_AT_SIM_SECONDS,
+    )
+
+    // A real Simulation Clock would tick close to MAX_ENDURANCE_SIM_SECONDS,
+    // but this jumps a large, coarse step past it — same "not whatever
+    // later tick happened to detect it" instant this behavior is supposed
+    // to guarantee regardless of tick granularity.
+    const wayPastExhaustion = advanceSimulation(dispatched, MAX_ENDURANCE_SIM_SECONDS + 500)
+
+    expect(wayPastExhaustion.droneActivity['drone-1']).toMatchObject({ mode: 'lost' })
+    expect(wayPastExhaustion.dronePatrol['drone-1'].position).toEqual(expectedLostPosition)
+  })
+
+  it('never leaves "lost" once reached, staying frozen at that same position forever', () => {
+    const dispatched = dispatchedState('oneWay')
+    const lost = advanceSimulation(dispatched, MAX_ENDURANCE_SIM_SECONDS)
+
+    const muchLater = advanceSimulation(lost, MAX_ENDURANCE_SIM_SECONDS + 100_000)
+
+    expect(muchLater.droneActivity['drone-1']).toEqual(lost.droneActivity['drone-1'])
+    expect(muchLater.dronePatrol['drone-1'].position).toEqual(lost.dronePatrol['drone-1'].position)
+  })
+
+  it("freezes the Fire's Confirmed Shape the instant its sole orbiting Drone goes Lost, and never live-updates again (issue V's freeze condition applies with no extra plumbing)", () => {
+    const dispatched = dispatchedState('oneWay')
+    const lastLiveTickAtSimSeconds = MAX_ENDURANCE_SIM_SECONDS - 1
+
+    // Steps through the last still-orbiting tick first (recording its live
+    // Confirmed Shape), same rationale as the issue V freeze test above:
+    // a real Simulation Clock ticks far more often than this test does.
+    const stillOrbiting = advanceSimulation(dispatched, lastLiveTickAtSimSeconds)
+    expect(stillOrbiting.droneActivity['drone-1']).toMatchObject({ mode: 'investigatingFire' })
+    const lastLiveShape = stillOrbiting.fires['fire-1'].confirmedFootprintHexCells
+
+    const lost = advanceSimulation(stillOrbiting, MAX_ENDURANCE_SIM_SECONDS)
+
+    expect(lost.droneActivity['drone-1']).toMatchObject({ mode: 'lost' })
+    expect(lost.fires['fire-1'].tier).toBe('investigated')
+    expect(lost.fires['fire-1'].confirmedFootprintHexCells).toEqual(lastLiveShape)
+    expect(lost.fires['fire-1'].confirmedAtSimSeconds).toBe(lastLiveTickAtSimSeconds)
+
+    const muchLater = advanceSimulation(lost, MAX_ENDURANCE_SIM_SECONDS + 10_000)
+    expect(muchLater.fires['fire-1'].confirmedFootprintHexCells).toEqual(lastLiveShape)
+    expect(muchLater.fires['fire-1'].confirmedAtSimSeconds).toBe(lastLiveTickAtSimSeconds)
+  })
+
+  it('never applies the endurance-exhaustion check to a roundTrip mission, even once its own endurance has also run out mid-orbit', () => {
+    const dispatched = dispatchedState('roundTrip')
+    const orbitRadiusMeters = fireOrbitRadiusMetersAt(DISPATCH_AT_SIM_SECONDS, TEST_WIND)
+    const lapDurationSimSeconds = orbitLapDurationSimSeconds(orbitRadiusMeters, droneLinearSpeedMetersPerSecond)
+    // This fixture's lap takes ~31s — comfortably longer than the 5s until
+    // MAX_ENDURANCE_SIM_SECONDS is reached, so this instant is past
+    // exhaustion but still mid-lap.
+    expect(lapDurationSimSeconds).toBeGreaterThan(MAX_ENDURANCE_SIM_SECONDS - DISPATCH_AT_SIM_SECONDS)
+
+    const pastExhaustionStillMidLap = advanceSimulation(dispatched, MAX_ENDURANCE_SIM_SECONDS)
+
+    expect(pastExhaustionStillMidLap.droneActivity['drone-1']).toMatchObject({ mode: 'investigatingFire', missionKind: 'roundTrip' })
   })
 })
 

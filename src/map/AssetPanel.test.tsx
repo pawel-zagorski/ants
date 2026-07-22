@@ -41,6 +41,7 @@ const patrollingPatrol: DronePatrolState = {
   angularSpeedRadiansPerSecond: 0.032,
   phaseOffsetRadians: 0,
   detectionRadiusMeters: 500,
+  maxEnduranceSimSeconds: drone.maxEnduranceSimSeconds,
   position: drone.position,
 }
 

@@ -551,7 +551,7 @@ U, R
 
 ---
 
-## [ ] W — One-Way Mission execution + terminal Lost drone state
+## [x] W — One-Way Mission execution + terminal Lost drone state
 
 ### Parent
 
@@ -563,10 +563,10 @@ A Drone dispatched on a One-Way Mission (issue U) orbits and maps (issue V's orb
 
 ### Acceptance criteria
 
-- [ ] A One-Way Mission Drone continues orbiting/mapping (reusing issue V's behavior) rather than stopping immediately on dispatch
-- [ ] The instant `remainingEnduranceSimSeconds` reaches zero, the Drone transitions to `Lost` and stops moving, wherever it currently is
-- [ ] A `Lost` Drone renders visually distinct from all other states and never appears in any dispatch list again
-- [ ] Unit tests cover the exact transition timing (Lost occurs precisely when endurance hits zero, not before/after) and that a Lost Drone's Confirmed Shape contribution freezes at that same moment
+- [x] A One-Way Mission Drone continues orbiting/mapping (reusing issue V's behavior) rather than stopping immediately on dispatch
+- [x] The instant `remainingEnduranceSimSeconds` reaches zero, the Drone transitions to `Lost` and stops moving, wherever it currently is
+- [x] A `Lost` Drone renders visually distinct from all other states and never appears in any dispatch list again
+- [x] Unit tests cover the exact transition timing (Lost occurs precisely when endurance hits zero, not before/after) and that a Lost Drone's Confirmed Shape contribution freezes at that same moment
 
 ### Blocked by
 

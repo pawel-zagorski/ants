@@ -48,6 +48,15 @@ body,
   clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
 }
 
+/* A Lost Drone (issue W) stays visible, greyed out, rather than being
+   removed — mirrors `.event-icon-resolved`'s "still visible, but visually
+   inactive" precedent further down in this file for the same
+   terminal-state reasoning. */
+.asset-icon-lost .asset-icon-shape {
+  opacity: 0.4;
+  filter: grayscale(1);
+}
+
 .asset-panel {
   position: absolute;
   top: 16px;
