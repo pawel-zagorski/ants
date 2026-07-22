@@ -6,11 +6,13 @@ import { AssetMarkers } from './AssetMarkers'
 import { AssetPanel } from './AssetPanel'
 import { EventMarkers } from './EventMarkers'
 import { GroundTruthToggle } from './GroundTruthToggle'
+import { ReturnEnvelope } from './ReturnEnvelope'
 import { withDronePositions } from '../engine/liveWorld'
+import { droneTelemetryFor } from '../engine/telemetry'
 import { useSimulationClock } from '../engine/useSimulationClock'
 import { SimulationClockPanel } from '../engine/SimulationClockPanel'
 import type { Scenario } from '../scenario/types'
-import type { Asset, World } from '../world/types'
+import type { Asset, Drone, World } from '../world/types'
 
 const OSM_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
 const OSM_ATTRIBUTION =
@@ -31,6 +33,10 @@ export interface RokuaMapProps {
  */
 function allAssets(world: World): Asset[] {
   return [...world.towers, ...world.baseStations, ...world.drones]
+}
+
+function isDroneAsset(asset: Asset): asset is Drone {
+  return asset.type === 'Quadrocopter' || asset.type === 'FixedWingDrone'
 }
 
 /**
@@ -57,12 +63,33 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
   // an open panel's fields track `liveWorld`/`clock.simulationState` as
   // they change, rather than the stale snapshot from the click that opened it.
   const selectedAsset = selectedAssetId ? allAssets(liveWorld).find((asset) => asset.id === selectedAssetId) ?? null : null
+  // The Return Envelope (issue K) is only shown while a Drone's status
+  // panel is open — mirrors `AssetPanel`'s own conditional-render pattern
+  // above, and reads the same live, shrinking-over-time
+  // `remainingEnduranceSimSeconds` the panel does (via `droneTelemetryFor`).
+  const selectedDroneRemainingEnduranceSimSeconds =
+    selectedAsset && isDroneAsset(selectedAsset)
+      ? droneTelemetryFor(
+          clock.simulationState.dronePatrol[selectedAsset.id],
+          clock.simulationState.droneActivity[selectedAsset.id],
+          clock.simulationState.elapsedSimSeconds,
+          selectedAsset.maxEnduranceSimSeconds,
+        ).remainingEnduranceSimSeconds
+      : undefined
 
   return (
     <MapContainer bounds={toLeafletBounds(world.bounds)} className="rokua-map">
       <TileLayer url={OSM_TILE_URL} attribution={OSM_ATTRIBUTION} />
       <AssetMarkers world={liveWorld} onSelect={(asset) => setSelectedAssetId(asset.id)} />
       <EventMarkers events={clock.simulationState.events} groundTruthViewEnabled={groundTruthViewEnabled} />
+      {selectedAsset && isDroneAsset(selectedAsset) && selectedDroneRemainingEnduranceSimSeconds !== undefined && (
+        <ReturnEnvelope
+          drone={selectedAsset}
+          dronePosition={selectedAsset.position}
+          remainingEnduranceSimSeconds={selectedDroneRemainingEnduranceSimSeconds}
+          baseStations={liveWorld.baseStations}
+        />
+      )}
       {selectedAsset && (
         <AssetPanel
           asset={selectedAsset}

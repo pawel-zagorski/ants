@@ -118,6 +118,65 @@ export function tangentialHeadingDegrees(angleRadians: number, angularSpeedRadia
   return (headingDegrees + 360) % 360
 }
 
+/**
+ * Samples `sampleCount` points around the ellipse whose foci are `focus1`
+ * and `focus2` and whose total focal-distance budget (the ellipse's
+ * defining constant: the sum of distances from any point on it to both
+ * foci) is `focalDistanceBudgetMeters` — the geometry behind the Return
+ * Envelope overlay (issue K, `CONTEXT.md`'s **Return Envelope** entry):
+ * "everywhere a Drone with this much remaining flight budget could go and
+ * still make it back to this one focus (a Base Station)". Semi-major axis
+ * `a = focalDistanceBudgetMeters / 2`, focal separation `c =
+ * distanceMetersBetween(focus1, focus2) / 2`, semi-minor axis `b =
+ * sqrt(a^2 - c^2)`, centered at the foci's midpoint and rotated to align
+ * with the focus1->focus2 axis — all in the same east/north flat-earth
+ * approximation {@link offsetLatLng} uses (no ellipsoid/geodesic math,
+ * consistent with every other helper in this file). Returns a *closed*
+ * ring (the first sampled point repeated as the last) ready to hand
+ * straight to a Leaflet `Polygon`'s `positions` prop.
+ *
+ * Returns `undefined` if `focalDistanceBudgetMeters` is less than the
+ * focal separation distance itself (`a < c`) — geometrically, the budget
+ * can't even span the gap between the two foci, so there is no valid
+ * ellipse (rather than producing a negative-`b`/`NaN` shape). This is the
+ * "Drone can't even make it to this particular Base Station on remaining
+ * energy" case (issue K acceptance criteria) — callers should skip
+ * rendering entirely for that focus pair rather than treating `undefined`
+ * as an error.
+ */
+export function returnEnvelopeEllipseRing(
+  focus1: LatLng,
+  focus2: LatLng,
+  focalDistanceBudgetMeters: number,
+  sampleCount = 96,
+): LatLng[] | undefined {
+  const kmPerDegreeLongitude = KM_PER_DEGREE_LATITUDE * Math.cos((focus1.lat * Math.PI) / 180)
+  const dxMeters = (focus2.lng - focus1.lng) * kmPerDegreeLongitude * 1000
+  const dyMeters = (focus2.lat - focus1.lat) * KM_PER_DEGREE_LATITUDE * 1000
+
+  const semiMajorAxisMeters = focalDistanceBudgetMeters / 2
+  const focalSeparationMeters = Math.sqrt(dxMeters * dxMeters + dyMeters * dyMeters) / 2
+  if (semiMajorAxisMeters < focalSeparationMeters) return undefined
+
+  const semiMinorAxisMeters = Math.sqrt(semiMajorAxisMeters ** 2 - focalSeparationMeters ** 2)
+  const center = offsetLatLng(focus1, dxMeters / 2, dyMeters / 2)
+  const rotationRadians = Math.atan2(dyMeters, dxMeters)
+  const cosRotation = Math.cos(rotationRadians)
+  const sinRotation = Math.sin(rotationRadians)
+
+  const ring: LatLng[] = []
+  for (let i = 0; i <= sampleCount; i += 1) {
+    const angleRadians = (2 * Math.PI * i) / sampleCount
+    const localEastMeters = semiMajorAxisMeters * Math.cos(angleRadians)
+    const localNorthMeters = semiMinorAxisMeters * Math.sin(angleRadians)
+    const eastMeters = localEastMeters * cosRotation - localNorthMeters * sinRotation
+    const northMeters = localEastMeters * sinRotation + localNorthMeters * cosRotation
+    ring.push(offsetLatLng(center, eastMeters, northMeters))
+  }
+
+  return ring
+}
+
 /** Reshapes a `LatLngBounds` into the `[lat, lng]` corner tuples react-leaflet expects. */
 export function toLeafletBounds(bounds: LatLngBounds): [[number, number], [number, number]] {
   return [

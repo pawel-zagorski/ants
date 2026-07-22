@@ -48,6 +48,10 @@ _Avoid_: Drone type (ambiguous with `DroneType`), make/manufacturer
 A Drone's sensor payload: `'Optical'` or `'Thermal'`. A third independent axis alongside `DroneType` (behavior) and Drone Model (real-world identity) — any combination of the three can occur.
 _Avoid_: Sensor type, camera
 
+**Return Envelope**:
+The map overlay shown only while a Drone's status panel is open: the union of two ellipses, one per Base Station, each with foci at the Drone's current live position and that Base Station, sized so the sum of the two focal distances equals the Drone's live `remainingEnduranceSimSeconds × cruiseSpeedMetersPerSecond` (the dynamic, shrinking-over-time flight budget) for that ellipse's Base Station. Answers "everywhere this Drone could still go and still make it back to *some* Base Station" — a Drone nearer Base A gets a fatter ellipse toward A, nearer Base B a fatter one toward B, and the two overlap/union in between. A Base Station outside the current budget simply drops its ellipse from the union rather than rendering a degenerate shape.
+_Avoid_: Range ring, fuel ring (this is a two-focus ellipse, not a simple radius)
+
 ### Events & Detection
 
 **Event**:

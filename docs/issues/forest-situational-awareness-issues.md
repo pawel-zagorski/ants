@@ -253,7 +253,7 @@ I
 
 ---
 
-## [ ] K — Return Envelope overlay on Drone selection
+## [x] K — Return Envelope overlay on Drone selection
 
 ### Parent
 
@@ -271,11 +271,11 @@ Add a `CONTEXT.md` glossary entry for **Return Envelope** (see wording drafted a
 
 ### Acceptance criteria
 
-- [ ] Selecting a Drone shows its Return Envelope overlay (1 or 2 filled ellipses, per feasibility); deselecting (closing the panel, or clicking another asset) hides it
-- [ ] Selecting a Tower or Base Station never shows a Return Envelope
-- [ ] The overlay visibly shrinks over simulated time as the clock runs (dynamic budget) — demoable by comparing the overlay at two different Simulation Clock times for the same selected Drone
-- [ ] Unit tests for the new `geo.ts` ellipse-sampling function: known focus/budget inputs produce points at the expected semi-major/semi-minor extents; a budget smaller than the focal distance is rejected (returns `undefined`/empty rather than throwing or producing NaNs)
-- [ ] `CONTEXT.md` has a new **Return Envelope** entry
+- [x] Selecting a Drone shows its Return Envelope overlay (1 or 2 filled ellipses, per feasibility); deselecting (closing the panel, or clicking another asset) hides it
+- [x] Selecting a Tower or Base Station never shows a Return Envelope
+- [x] The overlay visibly shrinks over simulated time as the clock runs (dynamic budget) — demoable by comparing the overlay at two different Simulation Clock times for the same selected Drone
+- [x] Unit tests for the new `geo.ts` ellipse-sampling function: known focus/budget inputs produce points at the expected semi-major/semi-minor extents; a budget smaller than the focal distance is rejected (returns `undefined`/empty rather than throwing or producing NaNs)
+- [x] `CONTEXT.md` has a new **Return Envelope** entry
 
 ### Blocked by
 

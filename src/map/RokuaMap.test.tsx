@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { RokuaMap } from './RokuaMap'
+import { offsetLatLng } from './geo'
 import type { Scenario } from '../scenario/types'
 import { droneSpecFixture } from '../test/worldFixtures'
 import type { World } from '../world/types'
@@ -377,5 +378,104 @@ describe('RokuaMap Drone/Base Station telemetry panels (issue G)', () => {
     const panel = screen.getByRole('dialog')
     expect(panel).toHaveTextContent('Investigating')
     expect(panel).toHaveTextContent('fire-1')
+  })
+})
+
+describe('RokuaMap Return Envelope overlay (issue K)', () => {
+  const base1Position = { lat: 64.5, lng: 26.25 }
+  // 3500m east of base-1 — tuned against maxEnduranceSimSeconds/
+  // cruiseSpeedMetersPerSecond below so it's reachable at t=0 but not after
+  // one Simulation Clock Step (see the "shrinks over simulated time" test).
+  const base2Position = offsetLatLng(base1Position, 3500, 0)
+
+  const returnEnvelopeWorld: World = {
+    bounds: world.bounds,
+    towers: [{ id: 'tower-1', type: 'Tower', position: { lat: 64.7, lng: 26.2 }, detectionRadiusMeters: 15000 }],
+    baseStations: [
+      { id: 'base-1', type: 'BaseStation', position: base1Position },
+      { id: 'base-2', type: 'BaseStation', position: base2Position },
+    ],
+    drones: [
+      {
+        id: 'drone-1',
+        type: 'Quadrocopter',
+        position: base1Position,
+        homeBaseStationId: 'base-1',
+        ...droneSpecFixture,
+        // Stationary right on top of base-1 (radius 1m, zero patrol speed)
+        // so the Return Envelope's foci stay deterministic across Steps.
+        patrolRadiusMeters: 1,
+        patrolSpeedMetersPerSecond: 0,
+        // budget(t=0) = 200 * 20 = 4000m: feasible for both base-1 (~1m
+        // away) and base-2 (3500m away). budget(t=30, after one Step) =
+        // (200-30) * 20 = 3400m: still feasible for base-1, no longer
+        // enough to reach base-2 (3500m).
+        maxEnduranceSimSeconds: 200,
+        cruiseSpeedMetersPerSecond: 20,
+      },
+    ],
+  }
+
+  const noEvents: Scenario = { events: [] }
+
+  it('shows no Return Envelope overlay until a Drone is selected', () => {
+    render(<RokuaMap world={returnEnvelopeWorld} scenario={noEvents} />)
+
+    expect(document.querySelectorAll('.return-envelope')).toHaveLength(0)
+  })
+
+  it('shows one ellipse per feasible Base Station (the union) once a Drone is selected', () => {
+    render(<RokuaMap world={returnEnvelopeWorld} scenario={noEvents} />)
+
+    fireEvent.click(document.querySelector('.asset-icon-quadrocopter') as Element)
+
+    expect(document.querySelectorAll('.return-envelope')).toHaveLength(2)
+  })
+
+  it('hides the Return Envelope overlay when the status panel is closed', () => {
+    render(<RokuaMap world={returnEnvelopeWorld} scenario={noEvents} />)
+
+    fireEvent.click(document.querySelector('.asset-icon-quadrocopter') as Element)
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+
+    expect(document.querySelectorAll('.return-envelope')).toHaveLength(0)
+  })
+
+  it('hides the Return Envelope overlay once a different asset is selected instead', () => {
+    render(<RokuaMap world={returnEnvelopeWorld} scenario={noEvents} />)
+
+    fireEvent.click(document.querySelector('.asset-icon-quadrocopter') as Element)
+    fireEvent.click(document.querySelector('.asset-icon-tower') as Element)
+
+    expect(document.querySelectorAll('.return-envelope')).toHaveLength(0)
+  })
+
+  it('never shows a Return Envelope when a Tower is selected', () => {
+    render(<RokuaMap world={returnEnvelopeWorld} scenario={noEvents} />)
+
+    fireEvent.click(document.querySelector('.asset-icon-tower') as Element)
+
+    expect(document.querySelectorAll('.return-envelope')).toHaveLength(0)
+  })
+
+  it('never shows a Return Envelope when a Base Station is selected', () => {
+    render(<RokuaMap world={returnEnvelopeWorld} scenario={noEvents} />)
+
+    fireEvent.click(document.querySelectorAll('.asset-icon-base-station')[0] as Element)
+
+    expect(document.querySelectorAll('.return-envelope')).toHaveLength(0)
+  })
+
+  it('shrinks over simulated time: a farther Base Station drops out of the union once the shrinking budget can no longer reach it', () => {
+    render(<RokuaMap world={returnEnvelopeWorld} scenario={noEvents} />)
+
+    fireEvent.click(document.querySelector('.asset-icon-quadrocopter') as Element)
+    expect(document.querySelectorAll('.return-envelope')).toHaveLength(2)
+
+    // Advances by STEP_SIM_SECONDS (30 simulated seconds — see
+    // useSimulationClock.ts), exactly enough to drop base-2 out of budget.
+    fireEvent.click(screen.getByRole('button', { name: 'Step' }))
+
+    expect(document.querySelectorAll('.return-envelope')).toHaveLength(1)
   })
 })
