@@ -40,11 +40,11 @@ export function SimulationClockPanel({ clock, startDateTimeIso }: SimulationCloc
     <div className="simulation-clock-panel" role="group" aria-label="Simulation Clock">
       <span className="simulation-clock-time">{timeDisplay}</span>
       {clock.isRunning ? (
-        <button type="button" onClick={clock.pause}>
+        <button type="button" className="simulation-clock-pause" onClick={clock.pause}>
           Pause
         </button>
       ) : (
-        <button type="button" onClick={clock.play}>
+        <button type="button" className="simulation-clock-play" onClick={clock.play}>
           Play
         </button>
       )}
