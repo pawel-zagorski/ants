@@ -45,6 +45,28 @@ function collectScenarioEventIssues(value: unknown, path: string, issues: string
   }
 }
 
+/**
+ * Validates the Scenario-wide `wind` field (see `CONTEXT.md`'s "Wind"
+ * entry and the doc comment on {@link Wind} in `./types`):
+ * `directionDegrees` must be a compass bearing in `[0, 360]` (the
+ * direction the wind is blowing FROM), and `speedMetersPerSecond` must be
+ * a non-negative finite number.
+ */
+function collectWindIssues(value: unknown, path: string, issues: string[]): void {
+  if (!isPlainObject(value)) {
+    issues.push(`${path} must be an object with directionDegrees/speedMetersPerSecond`)
+    return
+  }
+
+  if (!isFiniteNumber(value.directionDegrees) || value.directionDegrees < 0 || value.directionDegrees > 360) {
+    issues.push(`${path}.directionDegrees must be a finite number between 0 and 360`)
+  }
+
+  if (!isFiniteNumber(value.speedMetersPerSecond) || value.speedMetersPerSecond < 0) {
+    issues.push(`${path}.speedMetersPerSecond must be a non-negative finite number`)
+  }
+}
+
 function collectDuplicateIdIssues(events: ScenarioEvent[], issues: string[]): void {
   const seenIds = new Set<string>()
   events.forEach((event) => {
@@ -75,6 +97,7 @@ export function parseScenario(data: unknown): Scenario {
   }
 
   data.events.forEach((event, index) => collectScenarioEventIssues(event, `events[${index}]`, issues))
+  collectWindIssues(data.wind, 'wind', issues)
 
   if (issues.length === 0) {
     collectDuplicateIdIssues(data.events as ScenarioEvent[], issues)

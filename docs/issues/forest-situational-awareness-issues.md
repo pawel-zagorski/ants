@@ -389,7 +389,7 @@ None — can start immediately.
 
 ---
 
-## [ ] P — Wind: scenario schema field + map compass indicator
+## [x] P — Wind: scenario schema field + map compass indicator
 
 ### Parent
 
@@ -401,10 +401,10 @@ Add a `wind: { directionDegrees: number; speedMetersPerSecond: number }` field t
 
 ### Acceptance criteria
 
-- [ ] Scenario schema requires `wind`; validation rejects a missing/malformed value
-- [ ] A wind indicator renders on the map once a Scenario is loaded, pointing in the scenario's wind direction with its speed labeled
-- [ ] All three bundled scenarios have a `wind` value
-- [ ] Unit tests cover schema validation for `wind`
+- [x] Scenario schema requires `wind`; validation rejects a missing/malformed value
+- [x] A wind indicator renders on the map once a Scenario is loaded, pointing in the scenario's wind direction with its speed labeled
+- [x] All three bundled scenarios have a `wind` value
+- [x] Unit tests cover schema validation for `wind`
 
 ### Blocked by
 

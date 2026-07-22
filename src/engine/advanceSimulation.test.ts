@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { advanceSimulation, initializeSimulationState } from './advanceSimulation'
 import { INVESTIGATION_DURATION_SIM_SECONDS } from './dispatch'
 import { haversineDistanceMeters } from '../test/haversineDistanceMeters'
-import { createWorldFixture, droneSpecFixture } from '../test/worldFixtures'
+import { createWorldFixture, droneSpecFixture, windFixture } from '../test/worldFixtures'
 import type { Scenario } from '../scenario/types'
 import type { World } from '../world/types'
 import type { SimulationState } from './types'
@@ -26,7 +26,12 @@ const world: World = createWorldFixture({
   ],
 })
 
-const emptyScenario: Scenario = { events: [] }
+// Wind is required on every Scenario (issue P) but irrelevant to these
+// engine tests, which predate Fire spread consuming it — `windFixture`
+// keeps every literal below focused on what it's actually testing.
+const TEST_WIND = windFixture
+
+const emptyScenario: Scenario = { events: [], wind: TEST_WIND }
 
 describe('initializeSimulationState', () => {
   it('creates one patrol entry per Drone, keyed by Drone id', () => {
@@ -181,6 +186,7 @@ describe('Event spawning', () => {
         durationSimSeconds: 600,
       },
     ],
+    wind: TEST_WIND,
   }
 
   it('does not include an Event in state.events before its spawnAtSimSeconds', () => {
@@ -245,7 +251,7 @@ describe('Tower Detection of Fire Events', () => {
   const worldWithTower: World = createWorldFixture({ towers: [tower] })
 
   function fireScenarioAt(position: { lat: number; lng: number }): Scenario {
-    return { events: [{ id: 'fire-1', type: 'Fire', position, spawnAtSimSeconds: 0 }] }
+    return { events: [{ id: 'fire-1', type: 'Fire', position, spawnAtSimSeconds: 0 }], wind: TEST_WIND }
   }
 
   it('detects a Fire Event just inside a Tower\'s detection radius', () => {
@@ -273,6 +279,7 @@ describe('Tower Detection of Fire Events', () => {
         { id: 'person-1', type: 'PersonSighting', position: atTowerPosition, spawnAtSimSeconds: 0 },
         { id: 'tree-1', type: 'FallenTree', position: atTowerPosition, spawnAtSimSeconds: 0 },
       ],
+      wind: TEST_WIND,
     }
 
     const state = advanceSimulation(initializeSimulationState(worldWithTower, scenario), 0)
@@ -312,6 +319,7 @@ describe('Drone Detection of any Event type', () => {
       const world = worldWithStationaryDrone(1000)
       const scenario: Scenario = {
         events: [{ id: 'event-1', type: eventType, position: { lat: 64.505, lng: 26.25 }, spawnAtSimSeconds: 0 }],
+        wind: TEST_WIND,
       }
 
       const state = advanceSimulation(initializeSimulationState(world, scenario), 0)
@@ -325,6 +333,7 @@ describe('Drone Detection of any Event type', () => {
     const world = worldWithStationaryDrone(100)
     const scenario: Scenario = {
       events: [{ id: 'event-1', type: 'FallenTree', position: { lat: 64.55, lng: 26.3 }, spawnAtSimSeconds: 0 }],
+      wind: TEST_WIND,
     }
 
     const state = advanceSimulation(initializeSimulationState(world, scenario), 0)
@@ -354,7 +363,10 @@ describe('Detection is monotonic (sticky status)', () => {
     // Quadrocopter only enters its 50m detection radius once per lap, near
     // its closest approach.
     const eventPosition = { lat: 64.5 + 260 / 111320, lng: 26.25 }
-    const scenario: Scenario = { events: [{ id: 'event-1', type: 'FallenTree', position: eventPosition, spawnAtSimSeconds: 0 }] }
+    const scenario: Scenario = {
+      events: [{ id: 'event-1', type: 'FallenTree', position: eventPosition, spawnAtSimSeconds: 0 }],
+      wind: TEST_WIND,
+    }
 
     let state = initializeSimulationState(world, scenario)
     let becameDetectedAtSimSeconds: number | undefined
@@ -391,6 +403,7 @@ describe('Detection is monotonic (sticky status)', () => {
     })
     const scenario: Scenario = {
       events: [{ id: 'event-1', type: 'FallenTree', position: { lat: 64.5, lng: 26.25 }, spawnAtSimSeconds: 0 }],
+      wind: TEST_WIND,
     }
 
     const detected = advanceSimulation(initializeSimulationState(world, scenario), 0)
@@ -434,6 +447,7 @@ describe('Detection reproducibility', () => {
         { id: 'fire-1', type: 'Fire', position: { lat: 64.705, lng: 26.2 }, spawnAtSimSeconds: 0 },
         { id: 'tree-1', type: 'FallenTree', position: { lat: 64.5 + 255 / 111320, lng: 26.25 }, spawnAtSimSeconds: 10 },
       ],
+      wind: TEST_WIND,
     }
     // Same granularity useSimulationClock actually drives the engine at:
     // many small increasing steps, not one coarse jump (a single jump could
@@ -504,7 +518,7 @@ describe('Drone dispatch/investigate behavior (issue F)', () => {
   }
 
   function fireScenario(): Scenario {
-    return { events: [{ id: 'fire-1', type: 'Fire', position: eventPosition, spawnAtSimSeconds: 0 }] }
+    return { events: [{ id: 'fire-1', type: 'Fire', position: eventPosition, spawnAtSimSeconds: 0 }], wind: TEST_WIND }
   }
 
   it('dispatches exactly one eligible Drone — the nearest available one — on a new Detection', () => {
@@ -593,7 +607,7 @@ describe('Drone dispatch/investigate behavior (issue F)', () => {
 
     const afterReturn = advanceSimulation(state, INVESTIGATION_DURATION_SIM_SECONDS + 40)
     const expectedUndisturbedPosition = advanceSimulation(
-      initializeSimulationState(undisturbedTwin, { events: [] }),
+      initializeSimulationState(undisturbedTwin, { events: [], wind: TEST_WIND }),
       INVESTIGATION_DURATION_SIM_SECONDS + 40,
     ).dronePatrol['drone-near'].position
 
@@ -623,6 +637,7 @@ describe('Drone dispatch/investigate behavior (issue F)', () => {
         { id: 'fire-1', type: 'Fire', position: eventPosition, spawnAtSimSeconds: 0 },
         { id: 'fire-2', type: 'Fire', position: { lat: 64.6, lng: 26.3 }, spawnAtSimSeconds: 0 },
       ],
+      wind: TEST_WIND,
     }
 
     expect(() => advanceSimulation(initializeSimulationState(world, scenario), 0)).not.toThrow()
@@ -660,6 +675,7 @@ describe('Drone dispatch/investigate behavior (issue F)', () => {
         { id: 'earlier-event', type: 'FallenTree', position: earlierEventPosition, spawnAtSimSeconds: 0 },
         { id: 'fire-1', type: 'Fire', position: eventPosition, spawnAtSimSeconds: 0 },
       ],
+      wind: TEST_WIND,
     }
 
     let state = initializeSimulationState(world, scenario)
@@ -701,6 +717,7 @@ describe('Drone dispatch/investigate behavior (issue F)', () => {
         { id: 'event-a', type: 'Fire', position: { lat: 64.55, lng: 26.25 }, spawnAtSimSeconds: 0 },
         { id: 'event-b', type: 'Fire', position: { lat: 64.5505, lng: 26.2505 }, spawnAtSimSeconds: 0 },
       ],
+      wind: TEST_WIND,
     }
 
     const state = advanceSimulation(initializeSimulationState(world, scenario), 0)
@@ -739,6 +756,7 @@ describe('Event resolution (issue G)', () => {
   it('records detectedAtSimSeconds as the absolute elapsedSimSeconds an Event first becomes Detected', () => {
     const scenario: Scenario = {
       events: [{ id: 'fire-1', type: 'Fire', position: tower.position, spawnAtSimSeconds: 100, durationSimSeconds: 50 }],
+      wind: TEST_WIND,
     }
 
     const state = advanceSimulation(initializeSimulationState(worldWithTower, scenario), 137)
@@ -753,6 +771,7 @@ describe('Event resolution (issue G)', () => {
     // durationSimSeconds must count from that Detection instant, not 100.
     const scenario: Scenario = {
       events: [{ id: 'fire-1', type: 'Fire', position: tower.position, spawnAtSimSeconds: 100, durationSimSeconds: 50 }],
+      wind: TEST_WIND,
     }
 
     let state = initializeSimulationState(worldWithTower, scenario)
@@ -770,6 +789,7 @@ describe('Event resolution (issue G)', () => {
   it('never resolves an Event with no durationSimSeconds, however long it stays Detected', () => {
     const scenario: Scenario = {
       events: [{ id: 'fire-1', type: 'Fire', position: tower.position, spawnAtSimSeconds: 0 }],
+      wind: TEST_WIND,
     }
 
     const state = advanceSimulation(initializeSimulationState(worldWithTower, scenario), 1_000_000)
@@ -783,6 +803,7 @@ describe('Event resolution (issue G)', () => {
       events: [
         { id: 'fire-1', type: 'Fire', position: { lat: 60, lng: 20 }, spawnAtSimSeconds: 0, durationSimSeconds: 10 },
       ],
+      wind: TEST_WIND,
     }
 
     const state = advanceSimulation(initializeSimulationState(worldWithTower, scenario), 10_000)
@@ -793,6 +814,7 @@ describe('Event resolution (issue G)', () => {
   it('keeps a Resolved Event Resolved (sticky, forward-only) even if re-checked on a later tick', () => {
     const scenario: Scenario = {
       events: [{ id: 'fire-1', type: 'Fire', position: tower.position, spawnAtSimSeconds: 0, durationSimSeconds: 10 }],
+      wind: TEST_WIND,
     }
 
     let state = initializeSimulationState(worldWithTower, scenario)
@@ -806,6 +828,7 @@ describe('Event resolution (issue G)', () => {
   it('is deterministic: replaying the same tick sequence twice produces an identical resolution timeline', () => {
     const scenario: Scenario = {
       events: [{ id: 'fire-1', type: 'Fire', position: tower.position, spawnAtSimSeconds: 0, durationSimSeconds: 25 }],
+      wind: TEST_WIND,
     }
 
     function replay(): SimulationState {

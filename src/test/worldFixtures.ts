@@ -1,3 +1,4 @@
+import type { Wind } from '../scenario/types'
 import type { Drone, World } from '../world/types'
 
 /**
@@ -34,3 +35,11 @@ export const droneSpecFixture: Pick<
   datalinkRangeMeters: 30000,
   imageUrl: '/img/test-drone.jpg',
 }
+
+/**
+ * A Scenario-wide `wind` fixture (issue P) for tests that only need
+ * *some* valid value to satisfy the now-required `Scenario.wind` field
+ * and don't care about its specifics — spread/override as needed for
+ * tests that do (e.g. `WindIndicator`'s own rotation tests).
+ */
+export const windFixture: Wind = { directionDegrees: 90, speedMetersPerSecond: 5 }

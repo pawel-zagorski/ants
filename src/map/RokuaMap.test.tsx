@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { RokuaMap } from './RokuaMap'
 import { offsetLatLng } from './geo'
 import type { Scenario } from '../scenario/types'
-import { droneSpecFixture } from '../test/worldFixtures'
+import { droneSpecFixture, windFixture } from '../test/worldFixtures'
 import type { World } from '../world/types'
 
 const world: World = {
@@ -30,7 +30,9 @@ const world: World = {
   ],
 }
 
-const emptyScenario: Scenario = { events: [] }
+const TEST_WIND = windFixture
+
+const emptyScenario: Scenario = { events: [], wind: TEST_WIND }
 
 describe('RokuaMap', () => {
   it('renders a distinct marker per asset kind and no panel until one is clicked', () => {
@@ -132,6 +134,20 @@ describe('RokuaMap', () => {
   })
 })
 
+describe('RokuaMap Wind indicator (issue P)', () => {
+  it("shows the loaded Scenario's own wind speed label, not a hardcoded default", () => {
+    const scenarioWithDistinctWind: Scenario = {
+      events: [],
+      wind: { directionDegrees: 135, speedMetersPerSecond: 13 },
+    }
+
+    render(<RokuaMap world={world} scenario={scenarioWithDistinctWind} />)
+
+    expect(document.querySelector('.wind-indicator')).not.toBeNull()
+    expect(screen.getByText('13 m/s')).toBeInTheDocument()
+  })
+})
+
 describe('RokuaMap Datalink lines (issue L)', () => {
   it('shows an animated Datalink line for every Drone, independent of selection', () => {
     render(<RokuaMap world={world} scenario={emptyScenario} />)
@@ -164,6 +180,7 @@ describe('RokuaMap Event spawning and Ground Truth View', () => {
         spawnAtSimSeconds: 0,
       },
     ],
+    wind: TEST_WIND,
   }
 
   it('does not render an Event marker by default, even once it has spawned', () => {
@@ -202,6 +219,7 @@ describe('RokuaMap Event spawning and Ground Truth View', () => {
           spawnAtSimSeconds: 30,
         },
       ],
+      wind: TEST_WIND,
     }
 
     render(<RokuaMap world={world} scenario={scenarioWithLaterEvent} />)
@@ -228,6 +246,7 @@ describe('RokuaMap Detection and fog-of-war default view (issue E)', () => {
         spawnAtSimSeconds: 0,
       },
     ],
+    wind: TEST_WIND,
   }
 
   const personSightingNearTower: Scenario = {
@@ -239,6 +258,7 @@ describe('RokuaMap Detection and fog-of-war default view (issue E)', () => {
         spawnAtSimSeconds: 0,
       },
     ],
+    wind: TEST_WIND,
   }
 
   it('shows a Fire Event Detected by a Tower in the default (non-Ground-Truth) view', () => {
@@ -350,6 +370,7 @@ describe('RokuaMap Drone/Base Station telemetry panels (issue G)', () => {
     // counts observed to change after a single Step, with no re-click.
     const scenarioWithLaterFire: Scenario = {
       events: [{ id: 'fire-1', type: 'Fire', position: eventPosition, spawnAtSimSeconds: 30 }],
+      wind: TEST_WIND,
     }
 
     render(<RokuaMap world={worldWithOneDrone} scenario={scenarioWithLaterFire} />)
@@ -391,6 +412,7 @@ describe('RokuaMap Drone/Base Station telemetry panels (issue G)', () => {
     }
     const fireScenario: Scenario = {
       events: [{ id: 'fire-1', type: 'Fire', position: eventPosition, spawnAtSimSeconds: 0 }],
+      wind: TEST_WIND,
     }
 
     render(<RokuaMap world={worldWithOneDrone} scenario={fireScenario} />)
@@ -438,7 +460,7 @@ describe('RokuaMap Return Envelope overlay (issue K)', () => {
     ],
   }
 
-  const noEvents: Scenario = { events: [] }
+  const noEvents: Scenario = { events: [], wind: TEST_WIND }
 
   it('shows no Return Envelope overlay until a Drone is selected', () => {
     render(<RokuaMap world={returnEnvelopeWorld} scenario={noEvents} />)

@@ -314,3 +314,31 @@ body,
   cursor: pointer;
   user-select: none;
 }
+
+/* Wind indicator (issue P) — same UI weight/placement as the Ground Truth
+   toggle above, sitting alongside it and the Simulation Clock panel. The
+   arrow glyph is rotated in `WindIndicator.tsx` to point in the direction
+   the wind is blowing toward. */
+.wind-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  font-family: system-ui, sans-serif;
+  font-size: 13px;
+  color: #374151;
+}
+
+.wind-indicator-arrow {
+  display: inline-block;
+  font-size: 16px;
+  line-height: 1;
+  color: #1d4ed8;
+}
+
+.wind-indicator-label {
+  font-variant-numeric: tabular-nums;
+}

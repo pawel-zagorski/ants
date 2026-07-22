@@ -22,10 +22,28 @@ export interface ScenarioEvent {
 }
 
 /**
+ * A fixed direction/speed authored once per Scenario (see `CONTEXT.md`'s
+ * "Wind" entry) — constant for the whole run, hand-authored, never
+ * randomized or time-varying (ADR-0003's reproducibility guarantee).
+ *
+ * `directionDegrees` follows standard meteorological convention: the
+ * direction the wind is blowing FROM, measured clockwise from true north
+ * (0=N, 90=E, 180=S, 270=W). A "northerly wind" (0) blows from north
+ * *to* south — it does not blow toward the north. Any consumer that
+ * needs the direction the wind is blowing *toward* (e.g. a compass arrow,
+ * or issue R's downwind Growth Ellipse bias) must add 180 to this value.
+ */
+export interface Wind {
+  directionDegrees: number
+  speedMetersPerSecond: number
+}
+
+/**
  * A reproducible, timed script of Events to spawn against a World (see
  * `CONTEXT.md`). Deliberately holds nothing about the World roster itself
  * (ADR-0002) — a Scenario references a World, it never redefines it.
  */
 export interface Scenario {
   events: ScenarioEvent[]
+  wind: Wind
 }

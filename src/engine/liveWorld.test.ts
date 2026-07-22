@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { withDronePositions } from './liveWorld'
 import { initializeSimulationState, advanceSimulation } from './advanceSimulation'
-import { createWorldFixture, droneSpecFixture } from '../test/worldFixtures'
+import { createWorldFixture, droneSpecFixture, windFixture } from '../test/worldFixtures'
 import type { Scenario } from '../scenario/types'
 import type { World } from '../world/types'
 
@@ -20,7 +20,7 @@ const world: World = createWorldFixture({
   ],
 })
 
-const emptyScenario: Scenario = { events: [] }
+const emptyScenario: Scenario = { events: [], wind: windFixture }
 
 describe('withDronePositions', () => {
   it('replaces each Drone position with its current simulated position, leaving Towers/Base Stations untouched', () => {
