@@ -96,6 +96,29 @@ describe('droneLabel', () => {
   it('falls back to just the Drone name when model/type are absent', () => {
     expect(droneLabel(entry('droneResumedPatrol', { droneId: 'drone-3' }))).toBe('Drone 3')
   })
+
+  it('looks up model and type from the World when the entry omits them (engine-emitted entries)', () => {
+    const worldWithDrone: World = {
+      ...world,
+      drones: [
+        {
+          id: 'drone-1',
+          type: 'Quadrocopter',
+          position: basePosition,
+          homeBaseStationId: 'base-2',
+          model: 'DJI Mavic 4 Pro',
+          payload: 'Optical',
+          maxEnduranceSimSeconds: 3000,
+          cruiseSpeedMetersPerSecond: 10,
+          datalinkRangeMeters: 30000,
+          imageUrl: '',
+        },
+      ],
+    }
+    expect(droneLabel(entry('droneGrounded', { droneId: 'drone-1' }), worldWithDrone)).toBe(
+      'Drone 1 (DJI Mavic 4 Pro, Quadrocopter)',
+    )
+  })
 })
 
 describe('formatEventLogEntry text per kind', () => {

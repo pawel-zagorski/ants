@@ -143,13 +143,20 @@ function droneName(entry: EventLogEntry): string {
 
 /**
  * The rich Drone label used on dispatch/recall/grounded/lost lines:
- * `"Drone 1 (DJI Mavic 4 Pro, Quadrocopter)"` when this entry carries both
- * `droneModel` and `droneType`, otherwise just the plain `"Drone 1"` name.
+ * `"Drone 1 (DJI Mavic 4 Pro, Quadrocopter)"`. The model/type are taken from
+ * the entry's own `droneModel`/`droneType` when present, otherwise looked up
+ * from `world` by `droneId` — the engine only stamps `droneType` (its
+ * `DronePatrolState` carries no real-world `model`), so the World lookup is
+ * what supplies the model for engine-emitted entries. Falls back to the
+ * plain `"Drone 1"` name when neither source yields both a model and a type.
  */
-export function droneLabel(entry: EventLogEntry): string {
+export function droneLabel(entry: EventLogEntry, world?: World): string {
   const name = droneName(entry)
-  if (entry.droneModel && entry.droneType) {
-    return `${name} (${entry.droneModel}, ${assetTypeLabel(entry.droneType)})`
+  const worldDrone = entry.droneId && world ? world.drones.find((drone) => drone.id === entry.droneId) : undefined
+  const model = entry.droneModel ?? worldDrone?.model
+  const droneType = entry.droneType ?? worldDrone?.type
+  if (model && droneType) {
+    return `${name} (${model}, ${assetTypeLabel(droneType)})`
   }
   return name
 }
@@ -183,23 +190,23 @@ function textForEntry(entry: EventLogEntry, world: World): string {
     case 'fireDetected':
       return `Fire discovered ${locationText(entry, world)}`
     case 'droneDispatchedToEvent':
-      return `${droneLabel(entry)} dispatched to investigate ${eventTypeLower(entry)} ${locationText(entry, world)}`
+      return `${droneLabel(entry, world)} dispatched to investigate ${eventTypeLower(entry)} ${locationText(entry, world)}`
     case 'droneDispatchedToFire':
-      return `${droneLabel(entry)} dispatched to investigate fire ${locationText(entry, world)}`
+      return `${droneLabel(entry, world)} dispatched to investigate fire ${locationText(entry, world)}`
     case 'droneDispatchedOneWay':
-      return `${droneLabel(entry)} dispatched on a ONE-WAY mission to fire ${locationText(entry, world)}`
+      return `${droneLabel(entry, world)} dispatched on a ONE-WAY mission to fire ${locationText(entry, world)}`
     case 'droneBeganFireOrbit':
       return `${droneName(entry)} reached the fire and began orbiting ${locationText(entry, world)}`
     case 'droneReturningAfterOrbit':
       return `${droneName(entry)} finished investigating the fire and is returning to base`
     case 'droneRecalledToBase':
-      return `${droneLabel(entry)} ordered to return to nearest base ${locationText(entry, world)}`
+      return `${droneLabel(entry, world)} ordered to return to nearest base ${locationText(entry, world)}`
     case 'droneResumedPatrol':
       return `${droneName(entry)} resumed patrolling`
     case 'droneGrounded':
-      return `${droneLabel(entry)} grounded at base — out of service`
+      return `${droneLabel(entry, world)} grounded at base — out of service`
     case 'droneLost':
-      return `${droneLabel(entry)} lost — endurance exhausted`
+      return `${droneLabel(entry, world)} lost — endurance exhausted`
   }
 }
 
