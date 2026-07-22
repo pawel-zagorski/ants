@@ -141,6 +141,45 @@ describe('droneTelemetryFor — investigating', () => {
   })
 })
 
+describe('droneTelemetryFor — investigatingFire (issue U)', () => {
+  const investigatingFireActivity: DroneActivityState = {
+    mode: 'investigatingFire',
+    assignedFireId: 'fire-1',
+    investigationStartedAtSimSeconds: 100,
+    missionKind: 'roundTrip',
+  }
+
+  it('reports telemetry state "investigating" (shared with Event investigation) and the assigned Fire id/missionKind, not an assigned Event id', () => {
+    const telemetry = droneTelemetryFor(patrollingQuadrocopter, investigatingFireActivity, 110, MAX_ENDURANCE_SIM_SECONDS)
+
+    expect(telemetry.state).toBe('investigating')
+    expect(telemetry.assignedFireId).toBe('fire-1')
+    expect(telemetry.missionKind).toBe('roundTrip')
+    expect(telemetry.assignedEventId).toBeUndefined()
+  })
+
+  it('reports the given missionKind ("oneWay") unchanged', () => {
+    const oneWayActivity: DroneActivityState = { ...investigatingFireActivity, missionKind: 'oneWay' }
+    const telemetry = droneTelemetryFor(patrollingQuadrocopter, oneWayActivity, 110, MAX_ENDURANCE_SIM_SECONDS)
+
+    expect(telemetry.missionKind).toBe('oneWay')
+  })
+
+  it('reports zero speed and no heading for a hovering (Fire-investigating) Quadrocopter', () => {
+    const telemetry = droneTelemetryFor(patrollingQuadrocopter, investigatingFireActivity, 110, MAX_ENDURANCE_SIM_SECONDS)
+
+    expect(telemetry.speedMetersPerSecond).toBe(0)
+    expect(telemetry.headingDegrees).toBeUndefined()
+  })
+
+  it('reports non-zero speed and a defined heading for a circling (Fire-investigating) Fixed-Wing Drone', () => {
+    const telemetry = droneTelemetryFor(patrollingFixedWing, investigatingFireActivity, 110, MAX_ENDURANCE_SIM_SECONDS)
+
+    expect(telemetry.speedMetersPerSecond).toBeGreaterThan(0)
+    expect(telemetry.headingDegrees).toBeGreaterThanOrEqual(0)
+  })
+})
+
 describe('baseStationCountsFor', () => {
   const drones: Drone[] = [
     { id: 'drone-1', type: 'Quadrocopter', position: { lat: 0, lng: 0 }, homeBaseStationId: 'base-1', ...droneSpecFixture },
@@ -161,6 +200,16 @@ describe('baseStationCountsFor', () => {
   it('counts an investigating Drone homed at the Base Station as deployed', () => {
     const droneActivity: Record<string, DroneActivityState> = {
       'drone-1': { mode: 'investigating', assignedEventId: 'fire-1', investigationStartedAtSimSeconds: 0 },
+      'drone-2': { mode: 'patrolling' },
+      'drone-3': { mode: 'patrolling' },
+    }
+
+    expect(baseStationCountsFor('base-1', drones, droneActivity)).toEqual({ docked: 1, deployed: 1 })
+  })
+
+  it('counts a Fire-investigating Drone (issue U: mode "investigatingFire") homed at the Base Station as deployed too', () => {
+    const droneActivity: Record<string, DroneActivityState> = {
+      'drone-1': { mode: 'investigatingFire', assignedFireId: 'fire-1', investigationStartedAtSimSeconds: 0, missionKind: 'oneWay' },
       'drone-2': { mode: 'patrolling' },
       'drone-3': { mode: 'patrolling' },
     }

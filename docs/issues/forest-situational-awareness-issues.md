@@ -505,7 +505,7 @@ Q, N
 
 ---
 
-## [ ] U — Fire manual dispatch: Bingo Range / One-Way Mission lists + send
+## [x] U — Fire manual dispatch: Bingo Range / One-Way Mission lists + send
 
 ### Parent
 
@@ -517,10 +517,10 @@ Per ADR-0006, add a Bingo Range calculation reusing the Return Envelope's distan
 
 ### Acceptance criteria
 
-- [ ] Given a Fire position and a set of fixture Drones with varying `remainingEnduranceSimSeconds`/positions, classification unit tests cover: clearly Bingo-Range-safe, clearly one-way-only, and clearly unreachable
-- [ ] `FirePanel` shows two separate lists (Bingo Range, One-Way Mission) with a Send button per Drone; unreachable Drones don't appear in either
-- [ ] Sending a Drone from either list assigns it to the Fire and removes it from patrol availability
-- [ ] A Drone already Lost, investigating, or en route to another Fire/Event never appears in either list
+- [x] Given a Fire position and a set of fixture Drones with varying `remainingEnduranceSimSeconds`/positions, classification unit tests cover: clearly Bingo-Range-safe, clearly one-way-only, and clearly unreachable
+- [x] `FirePanel` shows two separate lists (Bingo Range, One-Way Mission) with a Send button per Drone; unreachable Drones don't appear in either
+- [x] Sending a Drone from either list assigns it to the Fire and removes it from patrol availability
+- [x] A Drone already Lost, investigating, or en route to another Fire/Event never appears in either list
 
 ### Blocked by
 

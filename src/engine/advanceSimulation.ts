@@ -7,6 +7,7 @@ import type {
   DroneActivityState,
   DronePatrolState,
   EventRuntimeState,
+  FireMissionKind,
   FireRuntimeState,
   SimulationState,
   TowerDetectionState,
@@ -348,7 +349,14 @@ function firesAt(
  * unless `INVESTIGATION_DURATION_SIM_SECONDS` has passed since it started,
  * in which case the Drone reverts to `'patrolling'` (issue F: "After the
  * investigation interval elapses, the Drone's mode flips back to
- * patrolling"). Missing/`'patrolling'` input passes through unchanged.
+ * patrolling"). `'investigatingFire'` (issue U) is deliberately left
+ * untouched here — unlike a fixed-duration Event investigation, a Fire
+ * investigation's end condition depends on its `missionKind` (complete one
+ * orbit lap vs. fly until endurance is exhausted), which isn't computed
+ * anywhere yet (issues V/W); until those land, a Drone sent to a Fire stays
+ * `'investigatingFire'` forever, same "sticky, carried forward unchanged"
+ * treatment `eventWithDetectionApplied` gives an already-`'detected'`
+ * Event. Missing/`'patrolling'` input passes through unchanged.
  */
 function activityAfterInvestigationExpiry(
   incomingActivity: DroneActivityState | undefined,
@@ -356,6 +364,10 @@ function activityAfterInvestigationExpiry(
 ): DroneActivityState {
   if (!incomingActivity || incomingActivity.mode === 'patrolling') {
     return { mode: 'patrolling' }
+  }
+
+  if (incomingActivity.mode === 'investigatingFire') {
+    return incomingActivity
   }
 
   const secondsSinceInvestigationStarted = elapsedSimSeconds - incomingActivity.investigationStartedAtSimSeconds
@@ -382,19 +394,27 @@ export function patrolAngleRadiansAt(patrol: DronePatrolState, elapsedSimSeconds
 /**
  * A Drone's position at `elapsedSimSeconds` given its current `activity`:
  * its normal closed-form patrol-loop position while `'patrolling'` (slice
- * C, unchanged), or — while `'investigating'` — a hover/circle position
- * around the assigned Event, looked up from `incomingEvents` (the Event's
- * position never changes once spawned, so the previous tick's copy is a
- * safe, stable source). Falls back to the patrol position if the assigned
- * Event is somehow missing from `incomingEvents`, which should not happen
- * in practice (dispatch only ever assigns an Event id already present in
- * that tick's `events`) but keeps this function total rather than throwing.
+ * C, unchanged), or — while `'investigating'`/`'investigatingFire'` — a
+ * hover/circle position around the assigned Event/Fire, looked up from
+ * `incomingEvents`/`incomingFires` (an Event's position never changes once
+ * spawned; a Fire's position is likewise fixed at its ignition point, only
+ * its Footprint grows around it — see `FireRuntimeState`/`growthEllipse.ts`
+ * — so the previous tick's copy is a safe, stable source either way). Reuses
+ * the exact same `investigatePositionFor` hover/circle math for both (issue
+ * U: no separate orbit math yet — see `bingoRange.ts`'s
+ * `FIRE_ORBIT_RADIUS_METERS` doc comment for why that's a deliberate,
+ * documented placeholder pending issue V's real orbit logic). Falls back to
+ * the patrol position if the assigned Event/Fire is somehow missing from
+ * `incomingEvents`/`incomingFires`, which should not happen in practice
+ * (dispatch only ever assigns an id already present in that tick's
+ * `events`/`fires`) but keeps this function total rather than throwing.
  */
 function positionForActivity(
   patrol: DronePatrolState,
   activity: DroneActivityState,
   elapsedSimSeconds: number,
   incomingEvents: Record<string, EventRuntimeState>,
+  incomingFires: Record<string, FireRuntimeState>,
 ): LatLng {
   if (activity.mode === 'investigating') {
     const assignedEvent = incomingEvents[activity.assignedEventId]
@@ -402,6 +422,17 @@ function positionForActivity(
       return investigatePositionFor(
         patrol.droneType,
         assignedEvent.position,
+        elapsedSimSeconds - activity.investigationStartedAtSimSeconds,
+      )
+    }
+  }
+
+  if (activity.mode === 'investigatingFire') {
+    const assignedFire = incomingFires[activity.assignedFireId]
+    if (assignedFire) {
+      return investigatePositionFor(
+        patrol.droneType,
+        assignedFire.position,
         elapsedSimSeconds - activity.investigationStartedAtSimSeconds,
       )
     }
@@ -444,12 +475,11 @@ function partitionScenarioEntries(
  * derive every Drone's position from its (possibly just-expired) activity,
  * (3) run Event and Fire Detection using those positions. There is
  * deliberately no automatic-dispatch step here (ADR-0004/ADR-0005, issues
- * O/Q): a newly-Detected Fire never dispatches a Drone at all in this
- * slice (Fire's own dispatch mechanism is a later issue, U/V), and a
- * newly-Detected Person Sighting/Fallen Tree Event no longer does either —
- * dispatching a Drone to an Event is now exclusively a user-driven action
- * via `withManualDispatch` (see `EventPanel`'s "Send" button), applied on
- * top of whatever this function returns, not from within it.
+ * O/Q): a newly-Detected Fire never auto-dispatches a Drone at all in this
+ * slice — dispatching a Drone to an Event or a Fire is exclusively a
+ * user-driven action via `withManualDispatch`/`withManualFireDispatch` (see
+ * `EventPanel`/`FirePanel`'s "Send" buttons), applied on top of whatever
+ * this function returns, not from within it.
  */
 function deriveDronesEventsAndFires(
   dronePatrolParams: Record<string, DronePatrolState>,
@@ -475,7 +505,7 @@ function deriveDronesEventsAndFires(
   for (const [droneId, patrol] of Object.entries(dronePatrolParams)) {
     dronePatrol[droneId] = {
       ...patrol,
-      position: positionForActivity(patrol, droneActivity[droneId], elapsedSimSeconds, incomingEvents),
+      position: positionForActivity(patrol, droneActivity[droneId], elapsedSimSeconds, incomingEvents, incomingFires),
     }
   }
 
@@ -644,6 +674,62 @@ export function withManualDispatch(state: SimulationState, droneId: string, even
     droneActivity: {
       ...state.droneActivity,
       [droneId]: { mode: 'investigating', assignedEventId: eventId, investigationStartedAtSimSeconds },
+    },
+  }
+}
+
+/**
+ * The Fire-dispatch sibling of {@link withManualDispatch} (issue U,
+ * ADR-0006): applies an explicit user "send this Drone to this Fire"
+ * action, immediately, the same way `withManualDispatch` does for an
+ * Event — `useSimulationClock`'s `sendDroneToFire` calls this directly
+ * rather than queueing it for the next tick, for the same "a Send click
+ * takes effect right away, whatever the Simulation Clock's play/pause/step
+ * state" reason. `droneId` switches to `'investigatingFire'` `fireId`
+ * starting now, carrying the given `missionKind` (which of `FirePanel`'s
+ * two lists — Bingo Range or One-Way Mission — the Drone was sent from;
+ * `FirePanel` itself decides this via `bingoRange.ts`'s
+ * `classifyFireDispatch`, not this function, since classification depends
+ * on live telemetry this pure state-transition has no need to recompute).
+ * Its position is re-derived immediately via `investigatePositionFor`
+ * (same hover/circle-at-the-target math `withManualDispatch` uses, applied
+ * to the Fire's position instead of an Event's — see `positionForActivity`'s
+ * doc comment for why there's no separate orbit math yet). Unlike
+ * `'investigating'`, there is no fixed-duration expiry to hand off to here
+ * — `activityAfterInvestigationExpiry` deliberately leaves
+ * `'investigatingFire'` sticky until issues V/W give it a real ending
+ * condition. A no-op (returns `state` unchanged, same object identity) if
+ * `droneId` isn't currently `'patrolling'` or `fireId` isn't a
+ * currently-non-`'undetected'` Fire (i.e. at least Tower-Detected, so it
+ * has an open, clickable `FirePanel` to send from) — `FirePanel` only ever
+ * offers "Send" for an eligible combination, but this stays
+ * defensive/total rather than throwing on a stale click.
+ */
+export function withManualFireDispatch(
+  state: SimulationState,
+  droneId: string,
+  fireId: string,
+  missionKind: FireMissionKind,
+): SimulationState {
+  const patrol = state.dronePatrol[droneId]
+  const activity = state.droneActivity[droneId]
+  const fire = state.fires[fireId]
+
+  if (!patrol || activity?.mode !== 'patrolling' || !fire || fire.tier === 'undetected') {
+    return state
+  }
+
+  const investigationStartedAtSimSeconds = state.elapsedSimSeconds
+
+  return {
+    ...state,
+    dronePatrol: {
+      ...state.dronePatrol,
+      [droneId]: { ...patrol, position: investigatePositionFor(patrol.droneType, fire.position, 0) },
+    },
+    droneActivity: {
+      ...state.droneActivity,
+      [droneId]: { mode: 'investigatingFire', assignedFireId: fireId, investigationStartedAtSimSeconds, missionKind },
     },
   }
 }

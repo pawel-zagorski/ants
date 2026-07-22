@@ -201,6 +201,40 @@ describe('AssetPanel Drone telemetry (issue G)', () => {
     expect(screen.queryByText('N/A (hovering)')).toBeNull()
   })
 
+  it('shows the assigned Fire id and its missionKind, not an assigned Event id, for a Fire-investigating Drone (issue U)', () => {
+    const investigatingFireActivity: DroneActivityState = {
+      mode: 'investigatingFire',
+      assignedFireId: 'fire-1',
+      investigationStartedAtSimSeconds: 0,
+      missionKind: 'oneWay',
+    }
+    const simulationState = simulationStateFixture({
+      elapsedSimSeconds: 5,
+      dronePatrol: { 'drone-1': patrollingPatrol },
+      droneActivity: { 'drone-1': investigatingFireActivity },
+    })
+
+    render(<AssetPanel asset={drone} simulationState={simulationState} drones={[drone]} onClose={vi.fn()} />)
+
+    const panel = screen.getByRole('dialog')
+    expect(panel).toHaveTextContent('Investigating')
+    expect(panel).toHaveTextContent('Assigned Fire')
+    expect(panel).toHaveTextContent('fire-1')
+    expect(panel).toHaveTextContent('One-Way Mission')
+    expect(panel).toHaveTextContent('None') // Assigned Event still shows "None"
+  })
+
+  it('does not show an "Assigned Fire" row for a patrolling or Event-investigating Drone', () => {
+    const simulationState = simulationStateFixture({
+      dronePatrol: { 'drone-1': patrollingPatrol },
+      droneActivity: { 'drone-1': { mode: 'patrolling' } },
+    })
+
+    render(<AssetPanel asset={drone} simulationState={simulationState} drones={[drone]} onClose={vi.fn()} />)
+
+    expect(screen.queryByText('Assigned Fire')).toBeNull()
+  })
+
   it('does not show Drone telemetry fields for a non-Drone asset', () => {
     render(<AssetPanel asset={tower} simulationState={simulationStateFixture()} drones={[]} onClose={vi.fn()} />)
 
@@ -267,6 +301,24 @@ describe('AssetPanel Base Station telemetry (issue G)', () => {
     const panel = screen.getByRole('dialog')
     expect(panel).toHaveTextContent('Operational Status')
     expect(panel).toHaveTextContent('Operational')
+
+    const dockedValue = screen.getByText('Docked Drones').nextElementSibling
+    const deployedValue = screen.getByText('Deployed Drones').nextElementSibling
+    expect(dockedValue).toHaveTextContent('1')
+    expect(deployedValue).toHaveTextContent('1')
+  })
+
+  it('counts a Fire-investigating Drone (issue U: mode "investigatingFire") as deployed too', () => {
+    const simulationState = simulationStateFixture({
+      droneActivity: {
+        'drone-1': { mode: 'patrolling' },
+        'drone-2': { mode: 'investigatingFire', assignedFireId: 'fire-1', investigationStartedAtSimSeconds: 0, missionKind: 'roundTrip' },
+      },
+    })
+
+    render(
+      <AssetPanel asset={baseStation} simulationState={simulationState} drones={[drone, fixedWingDrone]} onClose={vi.fn()} />,
+    )
 
     const dockedValue = screen.getByText('Docked Drones').nextElementSibling
     const deployedValue = screen.getByText('Deployed Drones').nextElementSibling

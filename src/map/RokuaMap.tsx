@@ -83,8 +83,15 @@ function isDroneAsset(asset: Asset): asset is Drone {
  * elapsed time since Detection — a later issue still owes the Confirmed
  * Shape treatment once a Fire reaches `'investigated'`. Clicking a
  * clickable (non-`'undetected'`) Fire marker instead opens `FirePanel`
- * (issue T): its read-only Detection Status (detecting Tower id/time,
- * current tier) — no dispatch UI on this panel yet, that's issue U.
+ * (issue T/U): its read-only Detection Status (detecting Tower id/time,
+ * current tier) plus a Bingo Range/One-Way Mission "Send" split (issue U,
+ * ADR-0006) — `onSend` wires straight to `useSimulationClock.sendDroneToFire`,
+ * mirroring `EventPanel`'s `onSend`/`sendDrone` wiring above but carrying
+ * which list the Drone was sent from as its `missionKind`. The Uncertainty
+ * Ellipse's visibility is keyed off the Fire's `tier` (Detection status),
+ * not its Drone-dispatch/investigation state, so it correctly keeps
+ * showing while a Drone is en route or `'investigatingFire'` and only
+ * disappears once the Fire itself reaches `'investigated'`.
  */
 export function RokuaMap({ world, scenario }: RokuaMapProps) {
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null)
@@ -192,6 +199,10 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
         <FirePanel
           fire={selectedFire}
           startDateTimeIso={scenario.startDateTimeIso}
+          simulationState={clock.simulationState}
+          drones={world.drones}
+          baseStations={liveWorld.baseStations}
+          onSend={(droneId, missionKind) => clock.sendDroneToFire(droneId, selectedFire.id, missionKind)}
           onClose={() => setSelectedFireId(null)}
         />
       )}

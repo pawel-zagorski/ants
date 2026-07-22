@@ -521,7 +521,7 @@ describe('RokuaMap Manual dispatch for Person Sighting/Fallen Tree (issue O)', (
     expect(screen.getByRole('dialog')).toHaveTextContent('tree-1')
   })
 
-  it('opens a read-only Detection Status panel (not the "Send" dispatch panel) when clicking a Detected Fire (issue T, not this issue\'s scope)', () => {
+  it('opens Fire\'s own Detection Status/dispatch panel (not this Event-only "available Drones" list) when clicking a Detected Fire (issue T/U, not this describe block\'s scope)', () => {
     const fireScenario: Scenario = {
       events: [{ id: 'fire-1', type: 'Fire', position: { lat: 64.7, lng: 26.2 }, spawnAtSimSeconds: 0 }],
       wind: TEST_WIND,
@@ -532,7 +532,11 @@ describe('RokuaMap Manual dispatch for Person Sighting/Fallen Tree (issue O)', (
 
     const panel = screen.getByRole('dialog')
     expect(panel).toHaveTextContent('fire-1')
-    expect(screen.queryByRole('button', { name: 'Send' })).toBeNull()
+    // The Fire panel's own Bingo Range/One-Way Mission dispatch UI (issue
+    // U) is exercised separately below — this test only confirms clicking
+    // a Fire opens *a* Fire panel, not this Event-only describe block's
+    // simple "available Drones" list.
+    expect(panel).not.toHaveTextContent('Available Drones')
   })
 })
 
@@ -546,7 +550,7 @@ describe('RokuaMap Fire clickable Detection Status panel (issue T)', () => {
     startDateTimeIso: '2026-06-01T08:00:00.000Z',
   }
 
-  it('opens a read-only Detection Status panel when a Tower-Detected Fire marker is clicked', () => {
+  it('opens a Detection Status panel (plus, since issue U, a dispatch section) when a Tower-Detected Fire marker is clicked', () => {
     render(<RokuaMap world={world} scenario={fireWithinTowerRange} />)
 
     fireEvent.click(document.querySelector('.event-icon-fire') as Element)
@@ -557,7 +561,10 @@ describe('RokuaMap Fire clickable Detection Status panel (issue T)', () => {
     expect(panel).toHaveTextContent('Tower-Detected')
     // Scenario Epoch + elapsedSimSeconds 0 => the Epoch itself.
     expect(panel).toHaveTextContent('2026-06-01 08:00:00')
-    expect(screen.queryByRole('button', { name: 'Send' })).toBeNull()
+    // The Bingo Range/One-Way Mission dispatch section itself (issue U) is
+    // covered in its own describe block below.
+    expect(panel).toHaveTextContent('Bingo Range')
+    expect(panel).toHaveTextContent('One-Way Mission')
   })
 
   it('closes the Fire panel via its close button', () => {
@@ -640,6 +647,60 @@ describe('RokuaMap Uncertainty Ellipse default-view treatment (issue S)', () => 
     fireEvent.click(screen.getByRole('button', { name: 'Step' }))
 
     expect(document.querySelectorAll('.uncertainty-ellipse')).toHaveLength(1)
+  })
+})
+
+describe('RokuaMap Fire manual dispatch — Bingo Range / One-Way Mission (issue U)', () => {
+  // tower-1 (64.7, 26.2, 15000m radius) guarantees Tower Detection at
+  // elapsedSimSeconds 0. Both World Drones (drone-1/drone-2, homed at
+  // base-1 near 64.5/26.25 — see the top-of-file `world` fixture) sit
+  // roughly 22km from this Fire with `droneSpecFixture`'s generous
+  // 7200s/10 m/s endurance/cruise-speed, comfortably inside Bingo Range
+  // (round trip well under the ~72km budget).
+  const fireWithinTowerRange: Scenario = {
+    events: [{ id: 'fire-1', type: 'Fire', position: { lat: 64.7, lng: 26.2 }, spawnAtSimSeconds: 0 }],
+    wind: TEST_WIND,
+  }
+
+  it('shows both Bingo Range Drones with a Send button, and no Drone in the One-Way Mission list', () => {
+    render(<RokuaMap world={world} scenario={fireWithinTowerRange} />)
+
+    fireEvent.click(document.querySelector('.event-icon-fire') as Element)
+
+    const panel = screen.getByRole('dialog')
+    expect(panel).toHaveTextContent('drone-1')
+    expect(panel).toHaveTextContent('drone-2')
+    expect(panel).toHaveTextContent('No Drones available for a One-Way Mission')
+    expect(screen.getAllByRole('button', { name: 'Send' })).toHaveLength(2)
+  })
+
+  it('assigns the sent Drone to the Fire, removes it from patrol availability, and drops it from the Fire panel\'s lists', () => {
+    render(<RokuaMap world={world} scenario={fireWithinTowerRange} />)
+
+    fireEvent.click(document.querySelector('.event-icon-fire') as Element)
+    fireEvent.click(screen.getAllByRole('button', { name: 'Send' })[0])
+
+    // Re-open the Fire panel — the sent Drone should have dropped out.
+    fireEvent.click(document.querySelector('.event-icon-fire') as Element)
+    expect(screen.getAllByRole('button', { name: 'Send' })).toHaveLength(1)
+
+    // The sent Drone's own status panel confirms it switched off patrol.
+    fireEvent.click(document.querySelector('.asset-icon-quadrocopter') as Element)
+    const dronePanel = screen.getByRole('dialog')
+    expect(dronePanel).toHaveTextContent('Investigating')
+    expect(dronePanel).toHaveTextContent('fire-1')
+  })
+
+  it('never shows a Drone that is already investigating something else in either list', () => {
+    render(<RokuaMap world={world} scenario={fireWithinTowerRange} />)
+
+    fireEvent.click(document.querySelector('.event-icon-fire') as Element)
+    fireEvent.click(screen.getAllByRole('button', { name: 'Send' })[0])
+
+    fireEvent.click(document.querySelector('.event-icon-fire') as Element)
+    const panel = screen.getByRole('dialog')
+    expect(screen.getAllByRole('button', { name: 'Send' })).toHaveLength(1)
+    expect(panel).not.toHaveTextContent('drone-1')
   })
 })
 

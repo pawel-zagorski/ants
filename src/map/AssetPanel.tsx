@@ -1,5 +1,6 @@
 import {
   droneTelemetryStateLabel,
+  fireMissionKindLabel,
   formatBatteryPercent,
   formatHeadingDegrees,
   formatRemainingEndurance,
@@ -48,7 +49,12 @@ function trackedFireFor(towerId: string, fires: Record<string, FireRuntimeState>
  * card additionally shows its `imageUrl` photo and its `model`/`payload`
  * identity fields (issue I), read straight off the `Drone` object rather
  * than `droneTelemetryFor` since they're static identity, not simulation
- * telemetry (issue J). Callers
+ * telemetry (issue J). "Assigned Event"/"Assigned Fire" are mutually
+ * exclusive (issue U: a Drone investigating a Fire has `assignedFireId`
+ * set and `assignedEventId` undefined, and vice versa — see
+ * `DroneTelemetry`'s doc comment); "Assigned Fire" additionally shows the
+ * `missionKind` ("Round Trip"/"One-Way") inline so this panel answers "is
+ * this Drone expected back?" at a glance. Callers
  * are responsible for passing a fresh `simulationState` on every render
  * (see `RokuaMap`) — that's what makes the Drone/Base Station fields
  * "live-update while the clock runs" rather than freezing at whatever they
@@ -109,6 +115,14 @@ export function AssetPanel({ asset, simulationState, drones, onClose }: AssetPan
             <dd>{formatHeadingDegrees(droneTelemetry.headingDegrees)}</dd>
             <dt>Assigned Event</dt>
             <dd>{droneTelemetry.assignedEventId ?? 'None'}</dd>
+            {droneTelemetry.assignedFireId !== undefined && droneTelemetry.missionKind !== undefined && (
+              <>
+                <dt>Assigned Fire</dt>
+                <dd>
+                  {droneTelemetry.assignedFireId} ({fireMissionKindLabel(droneTelemetry.missionKind)})
+                </dd>
+              </>
+            )}
             <dt>Flight Endurance Remaining</dt>
             <dd>{formatRemainingEndurance(droneTelemetry.remainingEnduranceSimSeconds)}</dd>
           </>
