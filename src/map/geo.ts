@@ -46,6 +46,22 @@ export function offsetLatLng(origin: LatLng, dxMeters: number, dyMeters: number)
   return { lat: origin.lat + latOffset, lng: origin.lng + lngOffset }
 }
 
+/**
+ * Distance in meters between two points, using the same flat-earth
+ * approximation as {@link offsetLatLng} (longitude degrees corrected by
+ * `cos(latitude)`, no ellipsoid/geodesic math) — the production distance
+ * check behind Detection (ADR-0003): comparing this against a Tower's or
+ * Drone's fixed detection radius. Accurate enough for this prototype's
+ * detection-radius scale (hundreds to tens of thousands of meters); not a
+ * geodesic distance, so don't reuse it for, e.g., long-haul navigation.
+ */
+export function distanceMetersBetween(a: LatLng, b: LatLng): number {
+  const kmPerDegreeLongitude = KM_PER_DEGREE_LATITUDE * Math.cos((a.lat * Math.PI) / 180)
+  const dyKm = (b.lat - a.lat) * KM_PER_DEGREE_LATITUDE
+  const dxKm = (b.lng - a.lng) * kmPerDegreeLongitude
+  return Math.sqrt(dxKm * dxKm + dyKm * dyKm) * 1000
+}
+
 /** Reshapes a `LatLngBounds` into the `[lat, lng]` corner tuples react-leaflet expects. */
 export function toLeafletBounds(bounds: LatLngBounds): [[number, number], [number, number]] {
   return [

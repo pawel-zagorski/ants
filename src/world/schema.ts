@@ -95,6 +95,7 @@ function collectDroneIssues(value: unknown, path: string, issues: string[]): voi
   collectStringFieldIssues(drone.homeBaseStationId, `${path}.homeBaseStationId`, issues)
   collectOptionalPositiveNumberIssues(drone.patrolRadiusMeters, `${path}.patrolRadiusMeters`, issues)
   collectOptionalPositiveNumberIssues(drone.patrolSpeedMetersPerSecond, `${path}.patrolSpeedMetersPerSecond`, issues)
+  collectOptionalPositiveNumberIssues(drone.detectionRadiusMeters, `${path}.detectionRadiusMeters`, issues)
 }
 
 /** Validates each element of an array field with a per-item validator, or records that it isn't an array. */

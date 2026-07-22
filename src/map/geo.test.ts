@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { offsetLatLng, squareViewportBounds, toLeafletBounds } from './geo'
+import { distanceMetersBetween, offsetLatLng, squareViewportBounds, toLeafletBounds } from './geo'
 import { haversineDistanceMeters } from '../test/haversineDistanceMeters'
 
 describe('squareViewportBounds', () => {
@@ -61,6 +61,36 @@ describe('offsetLatLng', () => {
 
     // 3-4-5 triangle: sqrt(300^2 + 400^2) = 500
     expect(haversineDistanceMeters(origin, moved)).toBeCloseTo(500, -1)
+  })
+})
+
+describe('distanceMetersBetween', () => {
+  it('returns 0 for a point and itself', () => {
+    const point = { lat: 64.5, lng: 26.25 }
+
+    expect(distanceMetersBetween(point, point)).toBe(0)
+  })
+
+  it('matches offsetLatLng: the distance to a point offset by dx/dy meters is the magnitude of that offset', () => {
+    const origin = { lat: 64.5, lng: 26.25 }
+    const offset = offsetLatLng(origin, 300, 400)
+
+    // 3-4-5 triangle: sqrt(300^2 + 400^2) = 500
+    expect(distanceMetersBetween(origin, offset)).toBeCloseTo(500, 6)
+  })
+
+  it('agrees with the independent haversine calculation at this prototype scale', () => {
+    const a = { lat: 64.5, lng: 26.25 }
+    const b = { lat: 64.62, lng: 26.7 }
+
+    expect(distanceMetersBetween(a, b)).toBeCloseTo(haversineDistanceMeters(a, b), -3)
+  })
+
+  it('is approximately symmetric (the longitude correction uses the first point\'s latitude, so it is not exact)', () => {
+    const a = { lat: 64.5, lng: 26.25 }
+    const b = { lat: 64.7, lng: 26.2 }
+
+    expect(distanceMetersBetween(a, b)).toBeCloseTo(distanceMetersBetween(b, a), -2)
   })
 })
 

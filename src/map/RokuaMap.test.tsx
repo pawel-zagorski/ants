@@ -190,3 +190,72 @@ describe('RokuaMap Event spawning and Ground Truth View', () => {
     expect(document.querySelectorAll('.event-icon')).toHaveLength(1)
   })
 })
+
+describe('RokuaMap Detection and fog-of-war default view (issue E)', () => {
+  const fireWithinTowerRange: Scenario = {
+    events: [
+      {
+        id: 'fire-1',
+        // tower-1 sits at (64.7, 26.2) with a 15000m detectionRadiusMeters.
+        type: 'Fire',
+        position: { lat: 64.7, lng: 26.2 },
+        spawnAtSimSeconds: 0,
+      },
+    ],
+  }
+
+  const personSightingNearTower: Scenario = {
+    events: [
+      {
+        id: 'person-1',
+        type: 'PersonSighting',
+        position: { lat: 64.7, lng: 26.2 },
+        spawnAtSimSeconds: 0,
+      },
+    ],
+  }
+
+  it('shows a Fire Event Detected by a Tower in the default (non-Ground-Truth) view', () => {
+    render(<RokuaMap world={world} scenario={fireWithinTowerRange} />)
+
+    const marker = document.querySelector('.event-icon-fire')
+    expect(marker).not.toBeNull()
+    expect(marker).not.toHaveClass('event-icon-undetected')
+  })
+
+  it("never shows a Person Sighting next to a Tower in the default view — Towers can't detect it", () => {
+    render(<RokuaMap world={world} scenario={personSightingNearTower} />)
+
+    expect(document.querySelectorAll('.event-icon')).toHaveLength(0)
+  })
+
+  it("keeps showing a Detected Fire Event in the default view as the Simulation Clock advances further", () => {
+    render(<RokuaMap world={world} scenario={fireWithinTowerRange} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Step' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Step' }))
+
+    const marker = document.querySelector('.event-icon-fire')
+    expect(marker).not.toBeNull()
+    expect(marker).not.toHaveClass('event-icon-undetected')
+  })
+
+  it("shows the Tower's currently-tracked Fire Event in its status panel", () => {
+    render(<RokuaMap world={world} scenario={fireWithinTowerRange} />)
+
+    fireEvent.click(document.querySelector('.asset-icon-tower') as Element)
+
+    const panel = screen.getByRole('dialog')
+    expect(panel).toHaveTextContent('Tracking')
+    expect(panel).toHaveTextContent('fire-1')
+  })
+
+  it("shows no tracked Fire Event in a Tower's status panel when none has been Detected", () => {
+    render(<RokuaMap world={world} scenario={emptyScenario} />)
+
+    fireEvent.click(document.querySelector('.asset-icon-tower') as Element)
+
+    const panel = screen.getByRole('dialog')
+    expect(panel).toHaveTextContent(/no fire event/i)
+  })
+})

@@ -29,20 +29,30 @@ export interface SimulationClock {
  * `advanceSimulation` engine on every animation frame. This is the one place
  * that bridges wall-clock time and React to the engine — `advanceSimulation`
  * itself stays free of both (see ADR/PRD "Simulation engine").
+ *
+ * Each tick feeds the *previous* tick's `simulationState` back in as
+ * `advanceSimulation`'s `state` argument (rather than always re-deriving
+ * from the Scenario's initial state at the new absolute
+ * `elapsedSimSeconds`) — required since Event Detection status (issue E) is
+ * monotonic and carried forward via that `state`, not recomputable from
+ * `elapsedSimSeconds` alone (see `advanceSimulation`'s doc comment). Drone
+ * position stays exactly as before: still a closed-form function of
+ * absolute `elapsedSimSeconds`, so chaining doesn't change its values.
  */
 export function useSimulationClock(world: World, scenario: Scenario): SimulationClock {
   const baseState = useMemo(() => initializeSimulationState(world, scenario), [world, scenario])
-  const [elapsedSimSeconds, setElapsedSimSeconds] = useState(0)
+  const [simulationState, setSimulationState] = useState<SimulationState>(baseState)
   const [isRunning, setIsRunning] = useState(false)
   const [speedMultiplier, setSpeedMultiplier] = useState<SimulationSpeedMultiplier>(1)
 
-  // Resets simulated time whenever `world` (and thus `baseState`) changes
-  // identity — an "adjust state during render" reset, not an effect, per
+  // Resets simulated state whenever `world`/`scenario` (and thus
+  // `baseState`) change identity — an "adjust state during render" reset,
+  // not an effect, per
   // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes.
   const [previousBaseState, setPreviousBaseState] = useState(baseState)
   if (baseState !== previousBaseState) {
     setPreviousBaseState(baseState)
-    setElapsedSimSeconds(0)
+    setSimulationState(baseState)
   }
 
   useEffect(() => {
@@ -54,7 +64,9 @@ export function useSimulationClock(world: World, scenario: Scenario): Simulation
     const tick = (timestampMs: number) => {
       if (lastTimestampMs !== null) {
         const wallClockDeltaSeconds = (timestampMs - lastTimestampMs) / 1000
-        setElapsedSimSeconds((previous) => previous + wallClockDeltaSeconds * speedMultiplier)
+        setSimulationState((previous) =>
+          advanceSimulation(previous, previous.elapsedSimSeconds + wallClockDeltaSeconds * speedMultiplier),
+        )
       }
       lastTimestampMs = timestampMs
       animationFrameId = requestAnimationFrame(tick)
@@ -64,14 +76,12 @@ export function useSimulationClock(world: World, scenario: Scenario): Simulation
     return () => cancelAnimationFrame(animationFrameId)
   }, [isRunning, speedMultiplier])
 
-  const simulationState = useMemo(
-    () => advanceSimulation(baseState, elapsedSimSeconds),
-    [baseState, elapsedSimSeconds],
-  )
-
   const play = useCallback(() => setIsRunning(true), [])
   const pause = useCallback(() => setIsRunning(false), [])
-  const step = useCallback(() => setElapsedSimSeconds((previous) => previous + STEP_SIM_SECONDS), [])
+  const step = useCallback(
+    () => setSimulationState((previous) => advanceSimulation(previous, previous.elapsedSimSeconds + STEP_SIM_SECONDS)),
+    [],
+  )
 
   return { simulationState, isRunning, speedMultiplier, play, pause, setSpeedMultiplier, step }
 }

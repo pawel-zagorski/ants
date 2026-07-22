@@ -28,7 +28,8 @@
       "position": { "lat": 64.502, "lng": 26.252 },
       "homeBaseStationId": "base-1",
       "patrolRadiusMeters": 250,
-      "patrolSpeedMetersPerSecond": 8
+      "patrolSpeedMetersPerSecond": 8,
+      "detectionRadiusMeters": 500
     },
     {
       "id": "drone-2",
@@ -36,7 +37,8 @@
       "position": { "lat": 64.51, "lng": 26.24 },
       "homeBaseStationId": "base-1",
       "patrolRadiusMeters": 2500,
-      "patrolSpeedMetersPerSecond": 25
+      "patrolSpeedMetersPerSecond": 25,
+      "detectionRadiusMeters": 1500
     },
     {
       "id": "drone-3",
@@ -44,7 +46,8 @@
       "position": { "lat": 64.622, "lng": 26.702 },
       "homeBaseStationId": "base-2",
       "patrolRadiusMeters": 250,
-      "patrolSpeedMetersPerSecond": 8
+      "patrolSpeedMetersPerSecond": 8,
+      "detectionRadiusMeters": 500
     },
     {
       "id": "drone-4",
@@ -52,7 +55,8 @@
       "position": { "lat": 64.63, "lng": 26.69 },
       "homeBaseStationId": "base-2",
       "patrolRadiusMeters": 2500,
-      "patrolSpeedMetersPerSecond": 25
+      "patrolSpeedMetersPerSecond": 25,
+      "detectionRadiusMeters": 1500
     }
   ]
 }

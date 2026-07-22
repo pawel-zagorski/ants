@@ -27,10 +27,13 @@ export interface RokuaMapProps {
  * docs/prd/forest-situational-awareness.md), with its Towers, Base Stations,
  * and Drones rendered as clickable markers, plus the chosen Scenario's
  * spawned Events (issue D). Clicking an asset marker opens a status panel
- * with its basic identity fields. The Simulation Clock (issue C) drives
- * Drone patrol movement and Event spawning — Towers and Base Stations stay
- * at their fixed `world` positions. The Ground Truth View toggle (off by
- * default) controls whether Undetected Events are visible at all.
+ * with its basic identity fields, plus — for a Tower — its currently-tracked
+ * Fire Event (issue E). The Simulation Clock (issue C) drives Drone patrol
+ * movement, Event spawning, and Detection (issue E) — Towers and Base
+ * Stations stay at their fixed `world` positions. The default ("fog of
+ * war") view shows only Detected/Resolved Events; the Ground Truth View
+ * toggle (off by default) additionally reveals Undetected ones,
+ * faded/dashed.
  */
 export function RokuaMap({ world, scenario }: RokuaMapProps) {
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null)
@@ -43,7 +46,9 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
       <TileLayer url={OSM_TILE_URL} attribution={OSM_ATTRIBUTION} />
       <AssetMarkers world={liveWorld} onSelect={setSelectedAsset} />
       <EventMarkers events={clock.simulationState.events} groundTruthViewEnabled={groundTruthViewEnabled} />
-      {selectedAsset && <AssetPanel asset={selectedAsset} onClose={() => setSelectedAsset(null)} />}
+      {selectedAsset && (
+        <AssetPanel asset={selectedAsset} events={clock.simulationState.events} onClose={() => setSelectedAsset(null)} />
+      )}
       <SimulationClockPanel clock={clock} />
       <GroundTruthToggle enabled={groundTruthViewEnabled} onChange={setGroundTruthViewEnabled} />
     </MapContainer>

@@ -91,7 +91,7 @@ C
 
 ---
 
-## [ ] E — Detection logic + fog-of-war default view
+## [x] E — Detection logic + fog-of-war default view
 
 ### What to build
 
@@ -99,11 +99,11 @@ Add deterministic, distance-based Detection to `advanceSimulation` (ADR-0003): a
 
 ### Acceptance criteria
 
-- [ ] Unit tests: a Fire Event inside/outside a Tower's radius is/isn't detected; a Person Sighting/Fallen Tree is never detected by a Tower regardless of distance
-- [ ] Unit tests: a Drone detects any Event type once within its radius
-- [ ] Default view shows Detected Events and hides Undetected ones; Ground Truth toggle still shows both (Undetected faded/dashed)
-- [ ] Reproducibility test: identical World + Scenario, run twice, produces an identical Detection timeline (same events, same detecting asset, same simulated timestamp)
-- [ ] Tower status panel shows its currently-tracked Fire Event, if any
+- [x] Unit tests: a Fire Event inside/outside a Tower's radius is/isn't detected; a Person Sighting/Fallen Tree is never detected by a Tower regardless of distance
+- [x] Unit tests: a Drone detects any Event type once within its radius
+- [x] Default view shows Detected Events and hides Undetected ones; Ground Truth toggle still shows both (Undetected faded/dashed)
+- [x] Reproducibility test: identical World + Scenario, run twice, produces an identical Detection timeline (same events, same detecting asset, same simulated timestamp)
+- [x] Tower status panel shows its currently-tracked Fire Event, if any
 
 ### Blocked by
 

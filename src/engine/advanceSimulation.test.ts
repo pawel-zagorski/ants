@@ -4,6 +4,7 @@ import { haversineDistanceMeters } from '../test/haversineDistanceMeters'
 import { createWorldFixture } from '../test/worldFixtures'
 import type { Scenario } from '../scenario/types'
 import type { World } from '../world/types'
+import type { SimulationState } from './types'
 
 const world: World = createWorldFixture({
   drones: [
@@ -227,5 +228,227 @@ describe('Event spawning', () => {
     const runB = advanceSimulation(initializeSimulationState(worldWithNoDrones, scenario), 250)
 
     expect(runA.events).toEqual(runB.events)
+  })
+})
+
+describe('Tower Detection of Fire Events', () => {
+  const tower: World['towers'][number] = {
+    id: 'tower-1',
+    type: 'Tower',
+    position: { lat: 64.7, lng: 26.2 },
+    detectionRadiusMeters: 1000,
+  }
+  const worldWithTower: World = createWorldFixture({ towers: [tower] })
+
+  function fireScenarioAt(position: { lat: number; lng: number }): Scenario {
+    return { events: [{ id: 'fire-1', type: 'Fire', position, spawnAtSimSeconds: 0 }] }
+  }
+
+  it('detects a Fire Event just inside a Tower\'s detection radius', () => {
+    // Directly north of the Tower, a few meters inside its detectionRadiusMeters
+    // (comfortably clear of floating-point rounding at the exact boundary).
+    const insidePosition = { lat: tower.position.lat + 990 / 111320, lng: tower.position.lng }
+    const state = advanceSimulation(initializeSimulationState(worldWithTower, fireScenarioAt(insidePosition)), 0)
+
+    expect(state.events['fire-1'].status).toBe('detected')
+    expect(state.events['fire-1'].detectedByAssetId).toBe('tower-1')
+  })
+
+  it('does not detect a Fire Event just outside a Tower\'s detection radius', () => {
+    const outsidePosition = { lat: tower.position.lat + 5000 / 111320, lng: tower.position.lng }
+    const state = advanceSimulation(initializeSimulationState(worldWithTower, fireScenarioAt(outsidePosition)), 0)
+
+    expect(state.events['fire-1'].status).toBe('undetected')
+    expect(state.events['fire-1'].detectedByAssetId).toBeUndefined()
+  })
+
+  it('never detects a Person Sighting or Fallen Tree, regardless of distance from a Tower', () => {
+    const atTowerPosition = { ...tower.position }
+    const scenario: Scenario = {
+      events: [
+        { id: 'person-1', type: 'PersonSighting', position: atTowerPosition, spawnAtSimSeconds: 0 },
+        { id: 'tree-1', type: 'FallenTree', position: atTowerPosition, spawnAtSimSeconds: 0 },
+      ],
+    }
+
+    const state = advanceSimulation(initializeSimulationState(worldWithTower, scenario), 0)
+
+    expect(state.events['person-1'].status).toBe('undetected')
+    expect(state.events['tree-1'].status).toBe('undetected')
+  })
+})
+
+describe('Drone Detection of any Event type', () => {
+  const droneId = 'quadrocopter-1'
+
+  function worldWithStationaryDrone(detectionRadiusMeters: number): World {
+    // A Quadrocopter with patrolSpeedMetersPerSecond 0 sits at a fixed point
+    // (within a negligible 1m of its Base Station) at every
+    // elapsedSimSeconds, making distance checks trivial to author against a
+    // fixed position.
+    return createWorldFixture({
+      drones: [
+        {
+          id: droneId,
+          type: 'Quadrocopter',
+          position: { lat: 64.5, lng: 26.25 },
+          homeBaseStationId: 'base-1',
+          patrolRadiusMeters: 1,
+          patrolSpeedMetersPerSecond: 0,
+          detectionRadiusMeters,
+        },
+      ],
+    })
+  }
+
+  it.each(['Fire', 'PersonSighting', 'FallenTree'] as const)(
+    'detects a %s Event once it is within its detection radius',
+    (eventType) => {
+      const world = worldWithStationaryDrone(1000)
+      const scenario: Scenario = {
+        events: [{ id: 'event-1', type: eventType, position: { lat: 64.505, lng: 26.25 }, spawnAtSimSeconds: 0 }],
+      }
+
+      const state = advanceSimulation(initializeSimulationState(world, scenario), 0)
+
+      expect(state.events['event-1'].status).toBe('detected')
+      expect(state.events['event-1'].detectedByAssetId).toBe(droneId)
+    },
+  )
+
+  it('does not detect an Event outside its detection radius', () => {
+    const world = worldWithStationaryDrone(100)
+    const scenario: Scenario = {
+      events: [{ id: 'event-1', type: 'FallenTree', position: { lat: 64.55, lng: 26.3 }, spawnAtSimSeconds: 0 }],
+    }
+
+    const state = advanceSimulation(initializeSimulationState(world, scenario), 0)
+
+    expect(state.events['event-1'].status).toBe('undetected')
+  })
+})
+
+describe('Detection is monotonic (sticky status)', () => {
+  it('keeps an Event Detected even once the detecting Drone patrols back out of range', () => {
+    // A tight-looping Quadrocopter passes near the Event once per orbit,
+    // then flies away again — Detection must persist through that.
+    const world = createWorldFixture({
+      drones: [
+        {
+          id: 'quadrocopter-1',
+          type: 'Quadrocopter',
+          position: { lat: 64.5, lng: 26.25 },
+          homeBaseStationId: 'base-1',
+          patrolRadiusMeters: 250,
+          detectionRadiusMeters: 50,
+        },
+      ],
+    })
+    // Just past the patrol loop's edge (radius 250 + a small margin), so the
+    // Quadrocopter only enters its 50m detection radius once per lap, near
+    // its closest approach.
+    const eventPosition = { lat: 64.5 + 260 / 111320, lng: 26.25 }
+    const scenario: Scenario = { events: [{ id: 'event-1', type: 'FallenTree', position: eventPosition, spawnAtSimSeconds: 0 }] }
+
+    let state = initializeSimulationState(world, scenario)
+    let becameDetectedAtSimSeconds: number | undefined
+    for (let elapsedSimSeconds = 0; elapsedSimSeconds <= 400; elapsedSimSeconds += 1) {
+      state = advanceSimulation(state, elapsedSimSeconds)
+      if (state.events['event-1'].status === 'detected' && becameDetectedAtSimSeconds === undefined) {
+        becameDetectedAtSimSeconds = elapsedSimSeconds
+      }
+    }
+
+    expect(becameDetectedAtSimSeconds).toBeDefined()
+    // Confirm the Quadrocopter did fly back out of the Event's detection
+    // range afterward (otherwise this test wouldn't be exercising stickiness).
+    const finalDistance = haversineDistanceMeters(eventPosition, state.dronePatrol['quadrocopter-1'].position)
+    expect(finalDistance).toBeGreaterThan(50)
+    expect(state.events['event-1'].status).toBe('detected')
+    expect(state.events['event-1'].detectedByAssetId).toBe('quadrocopter-1')
+  })
+
+  it('never re-derives Detection status from scratch when replaying the same absolute elapsedSimSeconds after the Event has already been Detected', () => {
+    const world = createWorldFixture({
+      drones: [
+        {
+          id: 'quadrocopter-1',
+          type: 'Quadrocopter',
+          position: { lat: 64.5, lng: 26.25 },
+          homeBaseStationId: 'base-1',
+          patrolRadiusMeters: 1,
+          patrolSpeedMetersPerSecond: 0,
+          detectionRadiusMeters: 10,
+        },
+      ],
+    })
+    const scenario: Scenario = {
+      events: [{ id: 'event-1', type: 'FallenTree', position: { lat: 64.5, lng: 26.25 }, spawnAtSimSeconds: 0 }],
+    }
+
+    const detected = advanceSimulation(initializeSimulationState(world, scenario), 0)
+    expect(detected.events['event-1'].status).toBe('detected')
+
+    // A hand-built incoming state where the Drone has moved far away, but
+    // the Event's carried-forward status is already 'detected' — the sticky
+    // merge must trust that carried-forward status, not the Drone's current
+    // distance, on this tick.
+    const droneFlewAway: SimulationState = {
+      ...detected,
+      dronePatrol: {
+        'quadrocopter-1': { ...detected.dronePatrol['quadrocopter-1'], position: { lat: 65, lng: 27 } },
+      },
+    }
+
+    const stillDetected = advanceSimulation(droneFlewAway, 1)
+    expect(stillDetected.events['event-1'].status).toBe('detected')
+    expect(stillDetected.events['event-1'].detectedByAssetId).toBe('quadrocopter-1')
+  })
+})
+
+describe('Detection reproducibility', () => {
+  it('replaying the same tick-by-tick sequence twice from a fresh initial state produces an identical Detection timeline', () => {
+    const world = createWorldFixture({
+      towers: [{ id: 'tower-1', type: 'Tower', position: { lat: 64.7, lng: 26.2 }, detectionRadiusMeters: 15000 }],
+      drones: [
+        {
+          id: 'quadrocopter-1',
+          type: 'Quadrocopter',
+          position: { lat: 64.5, lng: 26.25 },
+          homeBaseStationId: 'base-1',
+          patrolRadiusMeters: 250,
+          detectionRadiusMeters: 300,
+        },
+      ],
+    })
+    const scenario: Scenario = {
+      events: [
+        { id: 'fire-1', type: 'Fire', position: { lat: 64.705, lng: 26.2 }, spawnAtSimSeconds: 0 },
+        { id: 'tree-1', type: 'FallenTree', position: { lat: 64.5 + 255 / 111320, lng: 26.25 }, spawnAtSimSeconds: 10 },
+      ],
+    }
+    // Same granularity useSimulationClock actually drives the engine at:
+    // many small increasing steps, not one coarse jump (a single jump could
+    // miss the Quadrocopter's brief pass through the Fallen Tree's radius).
+    const tickPlanSimSeconds: number[] = []
+    for (let t = 0; t <= 300; t += 1) tickPlanSimSeconds.push(t)
+
+    function replay(): SimulationState {
+      let state = initializeSimulationState(world, scenario)
+      for (const elapsedSimSeconds of tickPlanSimSeconds) {
+        state = advanceSimulation(state, elapsedSimSeconds)
+      }
+      return state
+    }
+
+    const runA = replay()
+    const runB = replay()
+
+    expect(runA).toEqual(runB)
+    // Sanity: this scenario is actually exercising Detection by both asset kinds.
+    expect(runA.events['fire-1'].status).toBe('detected')
+    expect(runA.events['fire-1'].detectedByAssetId).toBe('tower-1')
+    expect(runA.events['tree-1'].status).toBe('detected')
+    expect(runA.events['tree-1'].detectedByAssetId).toBe('quadrocopter-1')
   })
 })

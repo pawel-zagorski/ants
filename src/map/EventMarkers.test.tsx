@@ -20,6 +20,15 @@ const undetectedFallenTree: EventRuntimeState = {
   spawnAtSimSeconds: 0,
 }
 
+const detectedFire: EventRuntimeState = {
+  id: 'event-3',
+  type: 'Fire',
+  position: { lat: 64.7, lng: 26.2 },
+  status: 'detected',
+  spawnAtSimSeconds: 0,
+  detectedByAssetId: 'tower-1',
+}
+
 function renderMarkers(events: Record<string, EventRuntimeState>, groundTruthViewEnabled: boolean) {
   return render(
     <MapContainer center={[64.5644, 26.4947]} zoom={9}>
@@ -54,5 +63,20 @@ describe('EventMarkers', () => {
 
     expect(document.querySelectorAll('.event-icon-fire')).toHaveLength(1)
     expect(document.querySelectorAll('.event-icon-fallentree')).toHaveLength(1)
+  })
+
+  it('renders a Detected Event even when Ground Truth View is disabled (the default fog-of-war view)', () => {
+    renderMarkers({ 'event-3': detectedFire }, false)
+
+    const markers = document.querySelectorAll('.event-icon')
+    expect(markers).toHaveLength(1)
+    expect(markers[0]).not.toHaveClass('event-icon-undetected')
+  })
+
+  it('hides an Undetected Event but shows a Detected one, in the same default view', () => {
+    renderMarkers({ 'event-1': undetectedFire, 'event-3': detectedFire }, false)
+
+    expect(document.querySelectorAll('.event-icon')).toHaveLength(1)
+    expect(document.querySelector('.event-icon-fire')).not.toBeNull()
   })
 })
