@@ -1,0 +1,50 @@
+{
+  "bounds": {
+    "southWest": { "lat": 64.3398, "lng": 25.9718 },
+    "northEast": { "lat": 64.789, "lng": 27.0176 }
+  },
+  "towers": [
+    {
+      "id": "tower-1",
+      "type": "Tower",
+      "position": { "lat": 64.7, "lng": 26.2 },
+      "detectionRadiusMeters": 15000
+    },
+    {
+      "id": "tower-2",
+      "type": "Tower",
+      "position": { "lat": 64.45, "lng": 26.75 },
+      "detectionRadiusMeters": 15000
+    }
+  ],
+  "baseStations": [
+    { "id": "base-1", "type": "BaseStation", "position": { "lat": 64.5, "lng": 26.25 } },
+    { "id": "base-2", "type": "BaseStation", "position": { "lat": 64.62, "lng": 26.7 } }
+  ],
+  "drones": [
+    {
+      "id": "drone-1",
+      "type": "Quadrocopter",
+      "position": { "lat": 64.502, "lng": 26.252 },
+      "homeBaseStationId": "base-1"
+    },
+    {
+      "id": "drone-2",
+      "type": "FixedWingDrone",
+      "position": { "lat": 64.51, "lng": 26.24 },
+      "homeBaseStationId": "base-1"
+    },
+    {
+      "id": "drone-3",
+      "type": "Quadrocopter",
+      "position": { "lat": 64.622, "lng": 26.702 },
+      "homeBaseStationId": "base-2"
+    },
+    {
+      "id": "drone-4",
+      "type": "FixedWingDrone",
+      "position": { "lat": 64.63, "lng": 26.69 },
+      "homeBaseStationId": "base-2"
+    }
+  ]
+}

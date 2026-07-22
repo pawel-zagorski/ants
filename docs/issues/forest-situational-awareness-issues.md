@@ -30,7 +30,7 @@ None — can start immediately.
 
 ---
 
-## [ ] B — World data + static asset rendering & click panels
+## [x] B — World data + static asset rendering & click panels
 
 ### What to build
 
@@ -38,12 +38,12 @@ Define the `world.json` schema (map bounds, Towers, Base Stations, Drones — se
 
 ### Acceptance criteria
 
-- [ ] `world.json` schema documented (types) and validated on load (fails loudly on malformed input)
-- [ ] Default `world.json` ships with 2 Towers, 2 Base Stations, and 4 Drones (mix of Quadrocopter/Fixed-Wing) per the PRD
-- [ ] All three asset kinds render as distinct markers at their configured positions
-- [ ] Quadrocopter vs Fixed-Wing Drone markers are visually distinguishable
-- [ ] Clicking a marker opens a panel with that asset's id, type, and position
-- [ ] Unit tests cover `world.json` schema validation (valid + invalid fixtures)
+- [x] `world.json` schema documented (types) and validated on load (fails loudly on malformed input)
+- [x] Default `world.json` ships with 2 Towers, 2 Base Stations, and 4 Drones (mix of Quadrocopter/Fixed-Wing) per the PRD
+- [x] All three asset kinds render as distinct markers at their configured positions
+- [x] Quadrocopter vs Fixed-Wing Drone markers are visually distinguishable
+- [x] Clicking a marker opens a panel with that asset's id, type, and position
+- [x] Unit tests cover `world.json` schema validation (valid + invalid fixtures)
 
 ### Blocked by
 

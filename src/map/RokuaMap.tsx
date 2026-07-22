@@ -1,26 +1,34 @@
+import { useState } from 'react'
 import { MapContainer, TileLayer } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
-import { squareViewportBounds, toLeafletBounds } from './geo'
-
-/** Rokua National Park, Finland — see docs/prd/forest-situational-awareness.md. */
-const ROKUA_CENTER = { lat: 64.5644, lng: 26.4947 }
-const DEFAULT_VIEWPORT_SIDE_KM = 50
-
-const DEFAULT_BOUNDS = squareViewportBounds(ROKUA_CENTER, DEFAULT_VIEWPORT_SIDE_KM)
+import { toLeafletBounds } from './geo'
+import { AssetMarkers } from './AssetMarkers'
+import { AssetPanel } from './AssetPanel'
+import type { Asset, World } from '../world/types'
 
 const OSM_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
 const OSM_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 
+export interface RokuaMapProps {
+  world: World
+}
+
 /**
- * Base map shell: an OpenStreetMap-tiled, pannable/zoomable map defaulting to
- * a 50x50km viewport over Rokua National Park. World/Scenario data is layered
- * on top of this in later slices.
+ * Base map shell: an OpenStreetMap-tiled, pannable/zoomable map over the
+ * World's `bounds` (Rokua National Park by default — see
+ * docs/prd/forest-situational-awareness.md), with its Towers, Base Stations,
+ * and Drones rendered as clickable markers. Clicking a marker opens a status
+ * panel with its basic identity fields.
  */
-export function RokuaMap() {
+export function RokuaMap({ world }: RokuaMapProps) {
+  const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null)
+
   return (
-    <MapContainer bounds={toLeafletBounds(DEFAULT_BOUNDS)} className="rokua-map">
+    <MapContainer bounds={toLeafletBounds(world.bounds)} className="rokua-map">
       <TileLayer url={OSM_TILE_URL} attribution={OSM_ATTRIBUTION} />
+      <AssetMarkers world={world} onSelect={setSelectedAsset} />
+      {selectedAsset && <AssetPanel asset={selectedAsset} onClose={() => setSelectedAsset(null)} />}
     </MapContainer>
   )
 }
