@@ -1,4 +1,5 @@
 import { fireTierLabel } from './assetPanelFormatting'
+import { withBase } from '../basePath'
 import { classifyFireDispatch } from '../engine/bingoRange'
 import { fireOrbitRadiusMetersAt } from '../engine/growthEllipse'
 import { formatScenarioDateTime, pad2 } from '../engine/scenarioEpoch'
@@ -197,6 +198,7 @@ export function FirePanel({ fire, startDateTimeIso, simulationState, drones, bas
 
   return (
     <div className="asset-panel fire-panel" role="dialog" aria-label={`Fire ${fire.id} status`}>
+      <img className="asset-panel-photo" src={withBase('/img/wildfire.jpeg')} alt="Wildfire" />
       <button type="button" className="asset-panel-close" onClick={onClose} aria-label="Close">
         &times;
       </button>

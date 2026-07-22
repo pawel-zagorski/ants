@@ -1,5 +1,7 @@
 import { eventTypeLabel } from '../scenario/eventTypeLabel'
+import { withBase } from '../basePath'
 import type { EventRuntimeState, SimulationState } from '../engine/types'
+import type { EventType } from '../scenario/types'
 import type { Drone } from '../world/types'
 
 export interface EventPanelProps {
@@ -53,6 +55,17 @@ function availableDronesFor(drones: readonly Drone[], droneActivity: SimulationS
 }
 
 /**
+ * The full-bleed banner photo an Event's card shows (`src` resolved through
+ * {@link withBase} at render, `alt` per kind) — a stock photo for the two
+ * scripted Event kinds, using the shared `.asset-panel-photo` cover styling
+ * (no margin variant, unlike a Drone's product shot in `AssetPanel`).
+ */
+function eventPhotoFor(type: EventType): { src: string; alt: string } {
+  if (type === 'PersonSighting') return { src: '/img/people_sighted.jpeg', alt: 'Person Sighting' }
+  return { src: '/img/fallen_tree.jpeg', alt: 'Fallen Tree' }
+}
+
+/**
  * Status panel opened by clicking a Detected, non-Fire Event marker (issue
  * O) — mirrors `AssetPanel`'s open/close pattern exactly (same close-button
  * placement/`role="dialog"` convention), but for an Event rather than an
@@ -65,9 +78,11 @@ function availableDronesFor(drones: readonly Drone[], droneActivity: SimulationS
  */
 export function EventPanel({ event, simulationState, drones, onSend, onClose }: EventPanelProps) {
   const availableDrones = availableDronesFor(drones, simulationState.droneActivity)
+  const photo = eventPhotoFor(event.type)
 
   return (
     <div className="asset-panel event-panel" role="dialog" aria-label={`${eventTypeLabel(event.type)} ${event.id} status`}>
+      <img className="asset-panel-photo" src={withBase(photo.src)} alt={photo.alt} />
       <button type="button" className="asset-panel-close" onClick={onClose} aria-label="Close">
         &times;
       </button>
