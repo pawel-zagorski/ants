@@ -6,6 +6,7 @@ import { AssetMarkers } from './AssetMarkers'
 import { AssetPanel } from './AssetPanel'
 import { DatalinkLines } from './DatalinkLines'
 import { EventMarkers } from './EventMarkers'
+import { FireMarkers } from './FireMarkers'
 import { GroundTruthToggle } from './GroundTruthToggle'
 import { ReturnEnvelope } from './ReturnEnvelope'
 import { WindIndicator } from './WindIndicator'
@@ -46,21 +47,24 @@ function isDroneAsset(asset: Asset): asset is Drone {
  * World's `bounds` (Rokua National Park by default — see
  * docs/prd/forest-situational-awareness.md), with its Towers, Base Stations,
  * and Drones rendered as clickable markers, plus the chosen Scenario's
- * spawned Events (issue D). Clicking an asset marker opens a status panel
- * with its basic identity fields, plus per-kind rich telemetry: a Tower's
- * currently-tracked Fire Event (issue E); a Drone's full telemetry and a
- * Base Station's docked/deployed counts (issue G) — see `AssetPanel`. The
- * Simulation Clock (issue C) drives Drone patrol movement, Event spawning,
- * Detection (issue E), and Resolution (issue G) — Towers and Base Stations
- * stay at their fixed `world` positions. The default ("fog of war") view
- * shows only Detected/Resolved Events; the Ground Truth View toggle (off
- * by default) additionally reveals Undetected ones, faded/dashed. Every
- * Drone also always shows an animated Datalink line to its nearest Relay
- * (issue L, see `DatalinkLines`) — unlike the status panel, this layer is
- * not gated by selection. Since `scenario` is only ever passed in once a
- * Scenario has been loaded/selected, the Wind indicator (issue P, see
- * `WindIndicator`) is always shown alongside the other bottom-left
- * controls, with no separate loaded-check needed.
+ * spawned Events (issue D) and Fires (issue Q — rendered by the sibling
+ * `FireMarkers`, reading `SimulationState.fires` rather than `events`,
+ * since ADR-0004 Fire is not a kind of Event). Clicking an asset marker
+ * opens a status panel with its basic identity fields, plus per-kind rich
+ * telemetry: a Tower's currently-tracked Fire (issue E); a Drone's full
+ * telemetry and a Base Station's docked/deployed counts (issue G) — see
+ * `AssetPanel`. The Simulation Clock (issue C) drives Drone patrol
+ * movement, Event spawning, Detection (issue E), and Resolution (issue G) —
+ * Towers and Base Stations stay at their fixed `world` positions. The
+ * default ("fog of war") view shows only Detected/Resolved Events; the
+ * Ground Truth View toggle (off by default) additionally reveals
+ * Undetected ones, faded/dashed. Every Drone also always shows an animated
+ * Datalink line to its nearest Relay (issue L, see `DatalinkLines`) —
+ * unlike the status panel, this layer is not gated by selection. Since
+ * `scenario` is only ever passed in once a Scenario has been
+ * loaded/selected, the Wind indicator (issue P, see `WindIndicator`) is
+ * always shown alongside the other bottom-left controls, with no separate
+ * loaded-check needed.
  */
 export function RokuaMap({ world, scenario }: RokuaMapProps) {
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null)
@@ -91,6 +95,7 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
       <DatalinkLines world={liveWorld} />
       <AssetMarkers world={liveWorld} onSelect={(asset) => setSelectedAssetId(asset.id)} />
       <EventMarkers events={clock.simulationState.events} groundTruthViewEnabled={groundTruthViewEnabled} />
+      <FireMarkers fires={clock.simulationState.fires} groundTruthViewEnabled={groundTruthViewEnabled} />
       {selectedAsset && isDroneAsset(selectedAsset) && selectedDroneRemainingEnduranceSimSeconds !== undefined && (
         <ReturnEnvelope
           drone={selectedAsset}

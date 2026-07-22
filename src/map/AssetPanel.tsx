@@ -6,19 +6,20 @@ import {
   formatSpeedMetersPerSecond,
 } from './assetPanelFormatting'
 import { baseStationCountsFor, droneTelemetryFor } from '../engine/telemetry'
-import type { EventRuntimeState, SimulationState } from '../engine/types'
+import type { FireRuntimeState, SimulationState } from '../engine/types'
 import { assetTypeLabel } from '../world/assetTypeLabel'
 import type { Asset, Drone } from '../world/types'
 
 export interface AssetPanelProps {
   asset: Asset
   /**
-   * The Simulation Clock's current `SimulationState` in full — `events`
-   * finds a Tower's currently-tracked Fire Event (issue E); `dronePatrol`/
-   * `droneActivity`/`elapsedSimSeconds` compute a Drone's or Base
-   * Station's rich telemetry (issue G). Kept as one prop (rather than four
-   * separate ones) since these fields always travel together as a single
-   * simulation snapshot — see `RokuaMap`, this panel's only caller.
+   * The Simulation Clock's current `SimulationState` in full — `fires`
+   * finds a Tower's currently-tracked Fire (issue E, moved onto its own
+   * `fires` map by issue Q/ADR-0004); `dronePatrol`/`droneActivity`/
+   * `elapsedSimSeconds` compute a Drone's or Base Station's rich telemetry
+   * (issue G). Kept as one prop (rather than several separate ones) since
+   * these fields always travel together as a single simulation snapshot —
+   * see `RokuaMap`, this panel's only caller.
    */
   simulationState: SimulationState
   /** The World's full Drone roster — used to resolve which Drones are homed at a Base Station (issue G). */
@@ -27,14 +28,14 @@ export interface AssetPanelProps {
 }
 
 /**
- * The Fire Event (if any) `towerId` is currently tracking: a Detected Fire
- * Event whose `detectedByAssetId` is this Tower's own id (see
- * `EventRuntimeState.detectedByAssetId`, set by `advanceSimulation`'s
- * Detection logic). Undefined if this Tower hasn't Detected a Fire Event,
+ * The Fire (if any) `towerId` is currently tracking: a Fire whose
+ * `detectedByAssetId` is this Tower's own id (see
+ * `FireRuntimeState.detectedByAssetId`, set by `advanceSimulation`'s
+ * Fire Detection logic). Undefined if this Tower hasn't Detected a Fire,
  * or if some other asset (a Drone also within range) detected it instead.
  */
-function trackedFireEventFor(towerId: string, events: Record<string, EventRuntimeState>): EventRuntimeState | undefined {
-  return Object.values(events).find((event) => event.type === 'Fire' && event.detectedByAssetId === towerId)
+function trackedFireFor(towerId: string, fires: Record<string, FireRuntimeState>): FireRuntimeState | undefined {
+  return Object.values(fires).find((fire) => fire.detectedByAssetId === towerId)
 }
 
 /**
@@ -54,9 +55,9 @@ function trackedFireEventFor(towerId: string, events: Record<string, EventRuntim
  * were when the panel was opened.
  */
 export function AssetPanel({ asset, simulationState, drones, onClose }: AssetPanelProps) {
-  const { events, dronePatrol, droneActivity, elapsedSimSeconds } = simulationState
+  const { fires, dronePatrol, droneActivity, elapsedSimSeconds } = simulationState
   const typeLabel = assetTypeLabel(asset.type)
-  const trackedFireEvent = asset.type === 'Tower' ? trackedFireEventFor(asset.id, events) : undefined
+  const trackedFire = asset.type === 'Tower' ? trackedFireFor(asset.id, fires) : undefined
 
   const isDrone = asset.type === 'Quadrocopter' || asset.type === 'FixedWingDrone'
   const patrol = isDrone ? dronePatrol[asset.id] : undefined
@@ -93,7 +94,7 @@ export function AssetPanel({ asset, simulationState, drones, onClose }: AssetPan
         {asset.type === 'Tower' && (
           <>
             <dt>Tracking</dt>
-            <dd>{trackedFireEvent ? `Fire Event ${trackedFireEvent.id}` : 'No Fire Event detected'}</dd>
+            <dd>{trackedFire ? `Fire ${trackedFire.id}` : 'No Fire detected'}</dd>
           </>
         )}
         {droneTelemetry && (

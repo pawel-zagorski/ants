@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { AssetPanel } from './AssetPanel'
-import type { DroneActivityState, DronePatrolState, EventRuntimeState, SimulationState } from '../engine/types'
+import type { DroneActivityState, DronePatrolState, FireRuntimeState, SimulationState } from '../engine/types'
 import { droneSpecFixture } from '../test/worldFixtures'
 import type { BaseStation, Drone, Tower } from '../world/types'
 
@@ -60,7 +60,9 @@ function simulationStateFixture(overrides: Partial<SimulationState> = {}): Simul
     droneActivity: {},
     towerDetection: {},
     scenarioEvents: [],
+    scenarioFireIgnitions: [],
     events: {},
+    fires: {},
     ...overrides,
   }
 }
@@ -84,46 +86,44 @@ describe('AssetPanel', () => {
   })
 })
 
-describe('AssetPanel Tower tracked Fire Event', () => {
-  it('shows "no Fire Event" when the Tower has not Detected one', () => {
+describe('AssetPanel Tower tracked Fire', () => {
+  it('shows "no Fire detected" when the Tower has not Detected one', () => {
     render(<AssetPanel asset={tower} simulationState={simulationStateFixture()} drones={[]} onClose={vi.fn()} />)
 
     expect(screen.getByText('Tracking')).toBeInTheDocument()
-    expect(screen.getByText(/no fire event/i)).toBeInTheDocument()
+    expect(screen.getByText(/no fire detected/i)).toBeInTheDocument()
   })
 
-  it('shows the Fire Event id the Tower is currently tracking', () => {
-    const events: Record<string, EventRuntimeState> = {
+  it('shows the Fire id the Tower is currently tracking', () => {
+    const fires: Record<string, FireRuntimeState> = {
       'fire-1': {
         id: 'fire-1',
-        type: 'Fire',
         position: { lat: 64.701, lng: 26.201 },
-        status: 'detected',
+        tier: 'towerDetected',
         spawnAtSimSeconds: 0,
         detectedByAssetId: 'tower-1',
       },
     }
 
-    render(<AssetPanel asset={tower} simulationState={simulationStateFixture({ events })} drones={[]} onClose={vi.fn()} />)
+    render(<AssetPanel asset={tower} simulationState={simulationStateFixture({ fires })} drones={[]} onClose={vi.fn()} />)
 
     expect(screen.getByText(/fire-1/)).toBeInTheDocument()
   })
 
-  it('does not show a Fire Event Detected by a different asset', () => {
-    const events: Record<string, EventRuntimeState> = {
+  it('does not show a Fire Detected by a different asset', () => {
+    const fires: Record<string, FireRuntimeState> = {
       'fire-1': {
         id: 'fire-1',
-        type: 'Fire',
         position: { lat: 64.701, lng: 26.201 },
-        status: 'detected',
+        tier: 'towerDetected',
         spawnAtSimSeconds: 0,
         detectedByAssetId: 'drone-1',
       },
     }
 
-    render(<AssetPanel asset={tower} simulationState={simulationStateFixture({ events })} drones={[]} onClose={vi.fn()} />)
+    render(<AssetPanel asset={tower} simulationState={simulationStateFixture({ fires })} drones={[]} onClose={vi.fn()} />)
 
-    expect(screen.getByText(/no fire event/i)).toBeInTheDocument()
+    expect(screen.getByText(/no fire detected/i)).toBeInTheDocument()
   })
 
   it('does not show a Tracking field for a non-Tower asset', () => {

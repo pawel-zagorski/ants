@@ -261,7 +261,7 @@ describe('RokuaMap Detection and fog-of-war default view (issue E)', () => {
     wind: TEST_WIND,
   }
 
-  it('shows a Fire Event Detected by a Tower in the default (non-Ground-Truth) view', () => {
+  it('shows a Fire Detected by a Tower in the default (non-Ground-Truth) view', () => {
     render(<RokuaMap world={world} scenario={fireWithinTowerRange} />)
 
     const marker = document.querySelector('.event-icon-fire')
@@ -275,7 +275,7 @@ describe('RokuaMap Detection and fog-of-war default view (issue E)', () => {
     expect(document.querySelectorAll('.event-icon')).toHaveLength(0)
   })
 
-  it("keeps showing a Detected Fire Event in the default view as the Simulation Clock advances further", () => {
+  it("keeps showing a Detected Fire in the default view as the Simulation Clock advances further", () => {
     render(<RokuaMap world={world} scenario={fireWithinTowerRange} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Step' }))
@@ -286,7 +286,7 @@ describe('RokuaMap Detection and fog-of-war default view (issue E)', () => {
     expect(marker).not.toHaveClass('event-icon-undetected')
   })
 
-  it("shows the Tower's currently-tracked Fire Event in its status panel", () => {
+  it("shows the Tower's currently-tracked Fire in its status panel", () => {
     render(<RokuaMap world={world} scenario={fireWithinTowerRange} />)
 
     fireEvent.click(document.querySelector('.asset-icon-tower') as Element)
@@ -296,13 +296,13 @@ describe('RokuaMap Detection and fog-of-war default view (issue E)', () => {
     expect(panel).toHaveTextContent('fire-1')
   })
 
-  it("shows no tracked Fire Event in a Tower's status panel when none has been Detected", () => {
+  it("shows no tracked Fire in a Tower's status panel when none has been Detected", () => {
     render(<RokuaMap world={world} scenario={emptyScenario} />)
 
     fireEvent.click(document.querySelector('.asset-icon-tower') as Element)
 
     const panel = screen.getByRole('dialog')
-    expect(panel).toHaveTextContent(/no fire event/i)
+    expect(panel).toHaveTextContent(/no fire detected/i)
   })
 })
 
@@ -350,13 +350,13 @@ describe('RokuaMap Drone/Base Station telemetry panels (issue G)', () => {
     const eventPosition = { lat: 64.55, lng: 26.25 }
     const worldWithOneDrone: World = {
       bounds: world.bounds,
-      towers: [{ id: 'tower-1', type: 'Tower', position: eventPosition, detectionRadiusMeters: 10 }],
-      baseStations: [{ id: 'base-1', type: 'BaseStation', position: { lat: 64.5505, lng: 26.25 } }],
+      towers: [],
+      baseStations: [{ id: 'base-1', type: 'BaseStation', position: eventPosition }],
       drones: [
         {
           id: 'drone-1',
           type: 'Quadrocopter',
-          position: { lat: 64.5505, lng: 26.25 },
+          position: eventPosition,
           homeBaseStationId: 'base-1',
           ...droneSpecFixture,
           patrolRadiusMeters: 1,
@@ -368,12 +368,14 @@ describe('RokuaMap Drone/Base Station telemetry panels (issue G)', () => {
     // seconds — see STEP_SIM_SECONDS in useSimulationClock.ts), so the
     // Base Station panel can be opened *before* dispatch happens and its
     // counts observed to change after a single Step, with no re-click.
-    const scenarioWithLaterFire: Scenario = {
-      events: [{ id: 'fire-1', type: 'Fire', position: eventPosition, spawnAtSimSeconds: 30 }],
+    // A Fallen Tree Event (not a Fire) since dispatch is Event-only — Fire
+    // Detection never dispatches a Drone (ADR-0004/ADR-0005, issue Q).
+    const scenarioWithLaterEvent: Scenario = {
+      events: [{ id: 'event-1', type: 'FallenTree', position: eventPosition, spawnAtSimSeconds: 30 }],
       wind: TEST_WIND,
     }
 
-    render(<RokuaMap world={worldWithOneDrone} scenario={scenarioWithLaterFire} />)
+    render(<RokuaMap world={worldWithOneDrone} scenario={scenarioWithLaterEvent} />)
 
     fireEvent.click(document.querySelector('.asset-icon-base-station') as Element)
     const dockedBefore = screen.getByText('Docked Drones').nextElementSibling
@@ -391,18 +393,19 @@ describe('RokuaMap Drone/Base Station telemetry panels (issue G)', () => {
 
   it("shows a dispatched Drone's status flip to Investigating (with its assigned Event id) once it starts investigating a new Detection", () => {
     // A single-Drone World isolates "which Drone gets dispatched" from the
-    // telemetry assertion itself — it's necessarily this one.
-    const towerId = 'tower-1'
+    // telemetry assertion itself — it's necessarily this one. A Fallen Tree
+    // Event (not a Fire) since dispatch is Event-only (ADR-0004/ADR-0005,
+    // issue Q).
     const eventPosition = { lat: 64.55, lng: 26.25 }
     const worldWithOneDrone: World = {
       bounds: world.bounds,
-      towers: [{ id: towerId, type: 'Tower', position: eventPosition, detectionRadiusMeters: 10 }],
-      baseStations: [{ id: 'base-1', type: 'BaseStation', position: { lat: 64.5505, lng: 26.25 } }],
+      towers: [],
+      baseStations: [{ id: 'base-1', type: 'BaseStation', position: eventPosition }],
       drones: [
         {
           id: 'drone-1',
           type: 'Quadrocopter',
-          position: { lat: 64.5505, lng: 26.25 },
+          position: eventPosition,
           homeBaseStationId: 'base-1',
           ...droneSpecFixture,
           patrolRadiusMeters: 1,
@@ -410,18 +413,18 @@ describe('RokuaMap Drone/Base Station telemetry panels (issue G)', () => {
         },
       ],
     }
-    const fireScenario: Scenario = {
-      events: [{ id: 'fire-1', type: 'Fire', position: eventPosition, spawnAtSimSeconds: 0 }],
+    const eventScenario: Scenario = {
+      events: [{ id: 'event-1', type: 'FallenTree', position: eventPosition, spawnAtSimSeconds: 0 }],
       wind: TEST_WIND,
     }
 
-    render(<RokuaMap world={worldWithOneDrone} scenario={fireScenario} />)
+    render(<RokuaMap world={worldWithOneDrone} scenario={eventScenario} />)
 
     fireEvent.click(document.querySelector('.asset-icon-quadrocopter') as Element)
 
     const panel = screen.getByRole('dialog')
     expect(panel).toHaveTextContent('Investigating')
-    expect(panel).toHaveTextContent('fire-1')
+    expect(panel).toHaveTextContent('event-1')
   })
 })
 

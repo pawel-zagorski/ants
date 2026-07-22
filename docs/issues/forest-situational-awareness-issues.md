@@ -412,7 +412,7 @@ None — can start immediately.
 
 ---
 
-## [ ] Q — Fire becomes its own domain concept
+## [x] Q — Fire becomes its own domain concept
 
 ### Parent
 
@@ -424,11 +424,11 @@ Per ADR-0004, split Fire out of the `EventType` union. Introduce a distinct `Fir
 
 ### Acceptance criteria
 
-- [ ] `Fire` is no longer part of the `EventType` union; `SimulationState.fires` is a new, separate map from `SimulationState.events`
-- [ ] Scenario schema validates a Fire ignition entry distinctly (no `durationSimSeconds` accepted/required) while still living in the same timed list as Events
-- [ ] Tower detection of a Fire still works exactly as before (existing detection tests pass, adapted to read from `fires` instead of `events`)
-- [ ] Fire still renders as a marker on the map, in the same visual position/behavior as before this slice (no visible regression)
-- [ ] `bundledScenarios.integration.test.ts` passes with the "Wildfire Outbreak" scenario producing the same Tower-Detection outcome as before
+- [x] `Fire` is no longer part of the `EventType` union; `SimulationState.fires` is a new, separate map from `SimulationState.events`
+- [x] Scenario schema validates a Fire ignition entry distinctly (no `durationSimSeconds` accepted/required) while still living in the same timed list as Events
+- [x] Tower detection of a Fire still works exactly as before (existing detection tests pass, adapted to read from `fires` instead of `events`)
+- [x] Fire still renders as a marker on the map, in the same visual position/behavior as before this slice (no visible regression)
+- [x] `bundledScenarios.integration.test.ts` passes with the "Wildfire Outbreak" scenario producing the same Tower-Detection outcome as before
 
 ### Blocked by
 

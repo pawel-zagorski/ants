@@ -5,8 +5,7 @@
       "id": "wildfire-outbreak-fire-1",
       "type": "Fire",
       "position": { "lat": 64.7, "lng": 26.305101 },
-      "spawnAtSimSeconds": 30,
-      "durationSimSeconds": 120
+      "spawnAtSimSeconds": 30
     }
   ],
   "wind": { "directionDegrees": 225, "speedMetersPerSecond": 11 }

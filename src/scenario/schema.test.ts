@@ -9,20 +9,20 @@ const validScenario = {
       type: 'FallenTree',
       position: { lat: 64.51, lng: 26.3 },
       spawnAtSimSeconds: 30,
+      durationSimSeconds: 600,
     },
     {
-      id: 'event-2',
+      id: 'fire-1',
       type: 'Fire',
       position: { lat: 64.6, lng: 26.4 },
       spawnAtSimSeconds: 120,
-      durationSimSeconds: 600,
     },
   ],
   wind: { directionDegrees: 225, speedMetersPerSecond: 8 },
 }
 
 describe('parseScenario', () => {
-  it('returns a Scenario unchanged when the input matches the schema', () => {
+  it('returns a Scenario unchanged when the input matches the schema, with Events and a Fire ignition sharing one timed list', () => {
     expect(parseScenario(validScenario)).toEqual(validScenario)
   })
 
@@ -49,27 +49,27 @@ describe('parseScenario', () => {
 
   it('throws when an Event position is malformed', () => {
     const badPosition = {
-      events: [{ id: 'event-1', type: 'Fire', position: { lat: 'north', lng: 26.3 }, spawnAtSimSeconds: 0 }],
+      events: [{ id: 'event-1', type: 'FallenTree', position: { lat: 'north', lng: 26.3 }, spawnAtSimSeconds: 0 }],
     }
     expect(() => parseScenario(badPosition)).toThrow(/position/)
   })
 
   it('throws when spawnAtSimSeconds is missing or negative', () => {
-    const missing = { events: [{ id: 'event-1', type: 'Fire', position: { lat: 64.5, lng: 26.3 } }] }
+    const missing = { events: [{ id: 'event-1', type: 'FallenTree', position: { lat: 64.5, lng: 26.3 } }] }
     expect(() => parseScenario(missing)).toThrow(/spawnAtSimSeconds/)
 
     const negative = {
-      events: [{ id: 'event-1', type: 'Fire', position: { lat: 64.5, lng: 26.3 }, spawnAtSimSeconds: -5 }],
+      events: [{ id: 'event-1', type: 'FallenTree', position: { lat: 64.5, lng: 26.3 }, spawnAtSimSeconds: -5 }],
     }
     expect(() => parseScenario(negative)).toThrow(/spawnAtSimSeconds/)
   })
 
-  it('throws when durationSimSeconds is present but not a positive number', () => {
+  it('throws when an Event\'s durationSimSeconds is present but not a positive number', () => {
     const badDuration = {
       events: [
         {
           id: 'event-1',
-          type: 'Fire',
+          type: 'FallenTree',
           position: { lat: 64.5, lng: 26.3 },
           spawnAtSimSeconds: 0,
           durationSimSeconds: -1,
@@ -90,12 +90,12 @@ describe('parseScenario', () => {
     expect(() => parseScenario(unparseableEpoch)).toThrow(/startDateTimeIso/)
   })
 
-  it('throws when two Events share the same id', () => {
+  it('throws when two entries (Event or Fire) share the same id', () => {
     const duplicateIds = {
       startDateTimeIso: '2025-06-14T12:00:00Z',
       events: [
-        { id: 'event-1', type: 'Fire', position: { lat: 64.5, lng: 26.3 }, spawnAtSimSeconds: 0 },
-        { id: 'event-1', type: 'FallenTree', position: { lat: 64.6, lng: 26.4 }, spawnAtSimSeconds: 10 },
+        { id: 'event-1', type: 'FallenTree', position: { lat: 64.5, lng: 26.3 }, spawnAtSimSeconds: 0 },
+        { id: 'event-1', type: 'Fire', position: { lat: 64.6, lng: 26.4 }, spawnAtSimSeconds: 10 },
       ],
       wind: validScenario.wind,
     }
@@ -157,5 +157,48 @@ describe('parseScenario', () => {
     expect(() =>
       parseScenario({ ...validScenario, wind: { directionDegrees: 225, speedMetersPerSecond: -1 } }),
     ).toThrow(/speedMetersPerSecond/)
+  })
+
+  describe('Fire ignition entries (ADR-0004)', () => {
+    it('accepts a minimal Fire ignition entry: id, position, spawnAtSimSeconds only', () => {
+      const scenario = {
+        startDateTimeIso: validScenario.startDateTimeIso,
+        events: [{ id: 'fire-1', type: 'Fire', position: { lat: 64.6, lng: 26.4 }, spawnAtSimSeconds: 0 }],
+        wind: validScenario.wind,
+      }
+      expect(parseScenario(scenario)).toEqual(scenario)
+    })
+
+    it('throws when a Fire ignition entry has a malformed position', () => {
+      const badPosition = {
+        ...validScenario,
+        events: [{ id: 'fire-1', type: 'Fire', position: { lat: 'north', lng: 26.3 }, spawnAtSimSeconds: 0 }],
+      }
+      expect(() => parseScenario(badPosition)).toThrow(/position/)
+    })
+
+    it('throws when a Fire ignition entry is missing or has a negative spawnAtSimSeconds', () => {
+      const missing = {
+        ...validScenario,
+        events: [{ id: 'fire-1', type: 'Fire', position: { lat: 64.5, lng: 26.3 } }],
+      }
+      expect(() => parseScenario(missing)).toThrow(/spawnAtSimSeconds/)
+
+      const negative = {
+        ...validScenario,
+        events: [{ id: 'fire-1', type: 'Fire', position: { lat: 64.5, lng: 26.3 }, spawnAtSimSeconds: -5 }],
+      }
+      expect(() => parseScenario(negative)).toThrow(/spawnAtSimSeconds/)
+    })
+
+    it('rejects a Fire ignition entry carrying a durationSimSeconds — Fires never auto-resolve', () => {
+      const badFire = {
+        ...validScenario,
+        events: [
+          { id: 'fire-1', type: 'Fire', position: { lat: 64.5, lng: 26.3 }, spawnAtSimSeconds: 0, durationSimSeconds: 600 },
+        ],
+      }
+      expect(() => parseScenario(badFire)).toThrow(/durationSimSeconds/)
+    })
   })
 })

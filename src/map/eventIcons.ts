@@ -5,9 +5,12 @@ import type { EventType } from '../scenario/types'
 /** Marker rendered size in pixels — matches `ICON_SIZE` in `assetIcons.ts`. */
 const ICON_SIZE = 26
 
-/** One shape/letter/color combination per {@link EventType}, mirroring `assetIcons.ts`. */
+/**
+ * One shape/letter/color combination per {@link EventType}, mirroring
+ * `assetIcons.ts`. Fire is deliberately absent (ADR-0004: Fire is not a
+ * kind of Event) — see `fireIcons.ts` for its own icon.
+ */
 const EVENT_TYPE_ICON: Record<EventType, { shapeClassName: string; label: string }> = {
-  Fire: { shapeClassName: 'event-icon-shape-fire', label: 'FI' },
   PersonSighting: { shapeClassName: 'event-icon-shape-person-sighting', label: 'PS' },
   FallenTree: { shapeClassName: 'event-icon-shape-fallen-tree', label: 'FT' },
 }

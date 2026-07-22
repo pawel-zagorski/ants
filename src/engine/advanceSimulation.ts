@@ -2,9 +2,16 @@ import { distanceMetersBetween, pointOnCircle } from '../map/geo'
 import type { LatLng } from '../map/geo'
 import { INVESTIGATION_DURATION_SIM_SECONDS, investigatePositionFor, selectNearestAvailableDrone } from './dispatch'
 import type { DispatchCandidate } from './dispatch'
-import type { EventType, Scenario, ScenarioEvent } from '../scenario/types'
+import type { Scenario, ScenarioEntry, ScenarioEvent, ScenarioFireIgnition } from '../scenario/types'
 import type { BaseStation, DroneType, World } from '../world/types'
-import type { DroneActivityState, DronePatrolState, EventRuntimeState, SimulationState, TowerDetectionState } from './types'
+import type {
+  DroneActivityState,
+  DronePatrolState,
+  EventRuntimeState,
+  FireRuntimeState,
+  SimulationState,
+  TowerDetectionState,
+} from './types'
 
 /**
  * Per-Drone-type patrol loop parameters (ADR/PRD design guidance): a
@@ -90,36 +97,72 @@ function spawnedEventsAt(
 }
 
 /**
- * The single Tower or Drone id (if any) whose detection radius currently
- * contains `event`'s position, per ADR-0003's Detection rule: a Tower only
- * detects Fire Events; a Drone (either kind) detects any Event type.
- * Towers are checked first, so a Fire Event simultaneously within both a
- * Tower's and a Drone's range is attributed to the Tower — the network's
- * designated fire sensor. Iterates `towerDetection`/`dronePatrol` in their
- * key order (stable, derived from `world.towers`/`world.drones` array
- * order — see `initializeSimulationState`), so which asset "wins" when
- * several are simultaneously in range is deterministic.
+ * The single asset id (if any) in `assets` whose `detectionRadiusMeters`
+ * currently reaches `position` — the shared scan loop behind both
+ * {@link detectingAssetIdFor} and {@link detectingAssetIdForFire}. Iterates
+ * `assets` in its own key order (stable, derived from `world.towers`/
+ * `world.drones` array order — see `initializeSimulationState`), so which
+ * asset "wins" when several are simultaneously in range is deterministic.
  */
-function detectingAssetIdFor(
-  event: { type: EventType; position: LatLng },
-  dronePatrol: Record<string, DronePatrolState>,
-  towerDetection: Record<string, TowerDetectionState>,
+function assetIdWithinRadius(
+  position: LatLng,
+  assets: Record<string, { position: LatLng; detectionRadiusMeters: number }>,
 ): string | undefined {
-  if (event.type === 'Fire') {
-    for (const [towerId, tower] of Object.entries(towerDetection)) {
-      if (distanceMetersBetween(event.position, tower.position) <= tower.detectionRadiusMeters) {
-        return towerId
-      }
-    }
-  }
-
-  for (const [droneId, drone] of Object.entries(dronePatrol)) {
-    if (distanceMetersBetween(event.position, drone.position) <= drone.detectionRadiusMeters) {
-      return droneId
+  for (const [assetId, asset] of Object.entries(assets)) {
+    if (distanceMetersBetween(position, asset.position) <= asset.detectionRadiusMeters) {
+      return assetId
     }
   }
 
   return undefined
+}
+
+/**
+ * The single Drone id (if any) whose detection radius currently contains
+ * `event`'s position, per ADR-0003's Detection rule: a Drone (either kind)
+ * detects any Event type. Towers never detect a Person Sighting/Fallen
+ * Tree Event — only a Fire (see {@link detectingAssetIdForFire}, ADR-0004)
+ * — so this no longer needs a `towerDetection` check at all now that Fire
+ * has moved off this path entirely.
+ */
+function detectingAssetIdFor(event: { position: LatLng }, dronePatrol: Record<string, DronePatrolState>): string | undefined {
+  return assetIdWithinRadius(event.position, dronePatrol)
+}
+
+/**
+ * The single Tower or Drone id (if any) whose detection radius currently
+ * contains a Fire at `position`, per ADR-0003/ADR-0004's Detection rule: a
+ * Tower detects a Fire; a Drone (either kind) also detects a Fire, same as
+ * any Event type (`CONTEXT.md`'s Detection entry: "a Tower for a Fire, a
+ * Drone for any Event type or a Fire"). Towers are checked first, so a Fire
+ * simultaneously within both a Tower's and a Drone's range is attributed to
+ * the Tower — the network's designated fire sensor.
+ */
+function detectingAssetIdForFire(
+  position: LatLng,
+  dronePatrol: Record<string, DronePatrolState>,
+  towerDetection: Record<string, TowerDetectionState>,
+): string | undefined {
+  return assetIdWithinRadius(position, towerDetection) ?? assetIdWithinRadius(position, dronePatrol)
+}
+
+/**
+ * Copies `detectedByAssetId`/`detectedAtSimSeconds` from `source` onto
+ * `target` if present on `source` — the shared "sticky Detection fields"
+ * shape both {@link eventWithDetectionApplied} and
+ * {@link fireWithDetectionApplied} use when carrying a previous tick's
+ * already-Detected state forward unchanged, rather than spreading these
+ * two optional fields inline in each.
+ */
+function withStickyDetectionFields<Target>(
+  target: Target,
+  source: { detectedByAssetId?: string; detectedAtSimSeconds?: number },
+): Target {
+  return {
+    ...target,
+    ...(source.detectedByAssetId !== undefined ? { detectedByAssetId: source.detectedByAssetId } : {}),
+    ...(source.detectedAtSimSeconds !== undefined ? { detectedAtSimSeconds: source.detectedAtSimSeconds } : {}),
+  }
 }
 
 /**
@@ -168,25 +211,15 @@ function eventWithDetectionApplied(
   previousEventState: EventRuntimeState | undefined,
   elapsedSimSeconds: number,
   dronePatrol: Record<string, DronePatrolState>,
-  towerDetection: Record<string, TowerDetectionState>,
 ): EventRuntimeState {
   if (previousEventState && previousEventState.status !== 'undetected') {
     return eventWithResolutionApplied(
-      {
-        ...event,
-        status: previousEventState.status,
-        ...(previousEventState.detectedByAssetId !== undefined
-          ? { detectedByAssetId: previousEventState.detectedByAssetId }
-          : {}),
-        ...(previousEventState.detectedAtSimSeconds !== undefined
-          ? { detectedAtSimSeconds: previousEventState.detectedAtSimSeconds }
-          : {}),
-      },
+      withStickyDetectionFields({ ...event, status: previousEventState.status }, previousEventState),
       elapsedSimSeconds,
     )
   }
 
-  const detectingAssetId = detectingAssetIdFor(event, dronePatrol, towerDetection)
+  const detectingAssetId = detectingAssetIdFor(event, dronePatrol)
   if (detectingAssetId === undefined) {
     return event
   }
@@ -202,8 +235,7 @@ function eventWithDetectionApplied(
  * from {@link spawnedEventsAt}'s fresh (always-`'undetected'`) snapshot,
  * then runs each one through {@link eventWithDetectionApplied} against
  * `incomingEvents` (the previous tick's `SimulationState.events`, for
- * sticky status) and the current tick's `dronePatrol`/`towerDetection`
- * positions.
+ * sticky status) and the current tick's `dronePatrol` positions.
  *
  * Tick-resolution caveat: this only checks each asset's position at the
  * discrete instants `advanceSimulation` is called for, not continuously
@@ -218,15 +250,95 @@ function eventsAt(
   elapsedSimSeconds: number,
   incomingEvents: Record<string, EventRuntimeState>,
   dronePatrol: Record<string, DronePatrolState>,
-  towerDetection: Record<string, TowerDetectionState>,
 ): Record<string, EventRuntimeState> {
   const events: Record<string, EventRuntimeState> = {}
 
   for (const [id, event] of Object.entries(spawnedEventsAt(scenarioEvents, elapsedSimSeconds))) {
-    events[id] = eventWithDetectionApplied(event, incomingEvents[id], elapsedSimSeconds, dronePatrol, towerDetection)
+    events[id] = eventWithDetectionApplied(event, incomingEvents[id], elapsedSimSeconds, dronePatrol)
   }
 
   return events
+}
+
+/**
+ * The Fire-ignition mirror of {@link spawnedEventsAt} (ADR-0004): every
+ * {@link ScenarioFireIgnition} whose `spawnAtSimSeconds` has been reached,
+ * each as a fresh `'undetected'` {@link FireRuntimeState}. Fire ignitions
+ * whose spawn time hasn't been reached are left out entirely, same
+ * "doesn't exist before spawn" rule as Events. Pure and total.
+ */
+function spawnedFiresAt(
+  scenarioFireIgnitions: readonly ScenarioFireIgnition[],
+  elapsedSimSeconds: number,
+): Record<string, FireRuntimeState> {
+  const fires: Record<string, FireRuntimeState> = {}
+
+  for (const scenarioFireIgnition of scenarioFireIgnitions) {
+    if (scenarioFireIgnition.spawnAtSimSeconds > elapsedSimSeconds) continue
+
+    fires[scenarioFireIgnition.id] = {
+      id: scenarioFireIgnition.id,
+      position: scenarioFireIgnition.position,
+      tier: 'undetected',
+      spawnAtSimSeconds: scenarioFireIgnition.spawnAtSimSeconds,
+    }
+  }
+
+  return fires
+}
+
+/**
+ * The Fire-tier mirror of {@link eventWithDetectionApplied} (ADR-0004): once
+ * `previousFireState.tier` has left `'undetected'` it's carried forward
+ * (sticky, monotonic — same rule as `EventRuntimeState.status`) rather than
+ * re-derived from this tick's asset positions. Only a still-`'undetected'`
+ * Fire is checked against the current tick's Tower/Drone positions via
+ * {@link detectingAssetIdForFire}. Unlike `eventWithDetectionApplied`,
+ * there is no resolution step afterward — a Fire never auto-resolves — and
+ * the only tier a fresh Detection can produce here is `'towerDetected'`;
+ * `'investigated'` is not yet reachable in this slice (issues U/V).
+ */
+function fireWithDetectionApplied(
+  fire: FireRuntimeState,
+  previousFireState: FireRuntimeState | undefined,
+  elapsedSimSeconds: number,
+  dronePatrol: Record<string, DronePatrolState>,
+  towerDetection: Record<string, TowerDetectionState>,
+): FireRuntimeState {
+  if (previousFireState && previousFireState.tier !== 'undetected') {
+    return withStickyDetectionFields({ ...fire, tier: previousFireState.tier }, previousFireState)
+  }
+
+  const detectingAssetId = detectingAssetIdForFire(fire.position, dronePatrol, towerDetection)
+  if (detectingAssetId === undefined) {
+    return fire
+  }
+
+  return { ...fire, tier: 'towerDetected', detectedByAssetId: detectingAssetId, detectedAtSimSeconds: elapsedSimSeconds }
+}
+
+/**
+ * The Fire mirror of {@link eventsAt} (ADR-0004): starts from {@link
+ * spawnedFiresAt}'s fresh snapshot, then runs each Fire through {@link
+ * fireWithDetectionApplied} against `incomingFires` (the previous tick's
+ * `SimulationState.fires`, for sticky tier) and the current tick's
+ * `dronePatrol`/`towerDetection` positions. Same tick-resolution caveat as
+ * `eventsAt` applies.
+ */
+function firesAt(
+  scenarioFireIgnitions: readonly ScenarioFireIgnition[],
+  elapsedSimSeconds: number,
+  incomingFires: Record<string, FireRuntimeState>,
+  dronePatrol: Record<string, DronePatrolState>,
+  towerDetection: Record<string, TowerDetectionState>,
+): Record<string, FireRuntimeState> {
+  const fires: Record<string, FireRuntimeState> = {}
+
+  for (const [id, fire] of Object.entries(spawnedFiresAt(scenarioFireIgnitions, elapsedSimSeconds))) {
+    fires[id] = fireWithDetectionApplied(fire, incomingFires[id], elapsedSimSeconds, dronePatrol, towerDetection)
+  }
+
+  return fires
 }
 
 /**
@@ -360,26 +472,59 @@ function withNewDispatches(
 }
 
 /**
- * The shared derivation behind both `initializeSimulationState` (called
- * with `incomingDroneActivity`/`incomingEvents` both empty, so an Event
- * Detected right at `elapsedSimSeconds = 0` still gets its one dispatch
- * opportunity) and `advanceSimulation` (called with the previous tick's
- * `droneActivity`/`events` as memory). Order matters: (1) let any
- * in-progress investigation expire back to `'patrolling'` first, (2)
- * derive every Drone's position from its (possibly just-expired) activity,
- * (3) run Detection using those positions, (4) dispatch newly-Detected
- * Events to nearest-available Drones, then (5) re-derive position only for
- * Drones newly switched to `'investigating'` this tick, so they appear at
- * their investigate position immediately rather than one tick later.
+ * Splits a Scenario's single timed `events` list (ADR-0004: Fire ignitions
+ * and Person Sighting/Fallen Tree Events share one JSON array, told apart
+ * by `type`) into the two separate arrays `SimulationState` carries
+ * (`scenarioEvents`/`scenarioFireIgnitions`) — done once, here, rather than
+ * re-filtered on every tick.
  */
-function deriveDronesAndEvents(
+function partitionScenarioEntries(
+  entries: readonly ScenarioEntry[],
+): { scenarioEvents: ScenarioEvent[]; scenarioFireIgnitions: ScenarioFireIgnition[] } {
+  const scenarioEvents: ScenarioEvent[] = []
+  const scenarioFireIgnitions: ScenarioFireIgnition[] = []
+
+  for (const entry of entries) {
+    if (entry.type === 'Fire') {
+      scenarioFireIgnitions.push(entry)
+    } else {
+      scenarioEvents.push(entry)
+    }
+  }
+
+  return { scenarioEvents, scenarioFireIgnitions }
+}
+
+/**
+ * The shared derivation behind both `initializeSimulationState` (called
+ * with `incomingDroneActivity`/`incomingEvents`/`incomingFires` all empty,
+ * so an Event Detected right at `elapsedSimSeconds = 0` still gets its one
+ * dispatch opportunity) and `advanceSimulation` (called with the previous
+ * tick's `droneActivity`/`events`/`fires` as memory). Order matters: (1)
+ * let any in-progress investigation expire back to `'patrolling'` first,
+ * (2) derive every Drone's position from its (possibly just-expired)
+ * activity, (3) run Event and Fire Detection using those positions, (4)
+ * dispatch newly-Detected Events to nearest-available Drones (Fire is not
+ * part of this dispatch step — ADR-0004/ADR-0005; a Fire never triggers an
+ * automatic Drone dispatch), then (5) re-derive position only for Drones
+ * newly switched to `'investigating'` this tick, so they appear at their
+ * investigate position immediately rather than one tick later.
+ */
+function deriveDronesEventsAndFires(
   dronePatrolParams: Record<string, DronePatrolState>,
   towerDetection: Record<string, TowerDetectionState>,
   scenarioEvents: readonly ScenarioEvent[],
+  scenarioFireIgnitions: readonly ScenarioFireIgnition[],
   elapsedSimSeconds: number,
   incomingDroneActivity: Record<string, DroneActivityState>,
   incomingEvents: Record<string, EventRuntimeState>,
-): { dronePatrol: Record<string, DronePatrolState>; droneActivity: Record<string, DroneActivityState>; events: Record<string, EventRuntimeState> } {
+  incomingFires: Record<string, FireRuntimeState>,
+): {
+  dronePatrol: Record<string, DronePatrolState>
+  droneActivity: Record<string, DroneActivityState>
+  events: Record<string, EventRuntimeState>
+  fires: Record<string, FireRuntimeState>
+} {
   const droneActivityAfterExpiry: Record<string, DroneActivityState> = {}
   for (const droneId of Object.keys(dronePatrolParams)) {
     droneActivityAfterExpiry[droneId] = activityAfterInvestigationExpiry(incomingDroneActivity[droneId], elapsedSimSeconds)
@@ -393,7 +538,8 @@ function deriveDronesAndEvents(
     }
   }
 
-  const events = eventsAt(scenarioEvents, elapsedSimSeconds, incomingEvents, dronePatrolBeforeDispatch, towerDetection)
+  const events = eventsAt(scenarioEvents, elapsedSimSeconds, incomingEvents, dronePatrolBeforeDispatch)
+  const fires = firesAt(scenarioFireIgnitions, elapsedSimSeconds, incomingFires, dronePatrolBeforeDispatch, towerDetection)
 
   const droneActivity = withNewDispatches(droneActivityAfterExpiry, dronePatrolBeforeDispatch, incomingEvents, events, elapsedSimSeconds)
 
@@ -417,7 +563,7 @@ function deriveDronesAndEvents(
     }
   }
 
-  return { dronePatrol, droneActivity, events }
+  return { dronePatrol, droneActivity, events, fires }
 }
 
 /**
@@ -425,10 +571,11 @@ function deriveDronesAndEvents(
  * one patrol loop per Drone (centered on its home Base Station, sized/sped/
  * ranged per its `DroneType` — see `PATROL_PARAMS_BY_DRONE_TYPE` and
  * `DETECTION_RADIUS_METERS_BY_DRONE_TYPE`), one detection entry per Tower,
- * plus whichever of the Scenario's Events have already spawned (and been
- * Detection-checked, and dispatched a Drone if newly Detected) at
- * `elapsedSimSeconds = 0`. Every Drone starts `'patrolling'` (issue F).
- * Base Stations are static in this slice and carry no simulation state.
+ * plus whichever of the Scenario's Events/Fire ignitions have already
+ * spawned (and been Detection-checked, and — for Events only — dispatched
+ * a Drone if newly Detected) at `elapsedSimSeconds = 0`. Every Drone starts
+ * `'patrolling'` (issue F). Base Stations are static in this slice and
+ * carry no simulation state.
  */
 export function initializeSimulationState(world: World, scenario: Scenario): SimulationState {
   const dronePatrolParams: Record<string, DronePatrolState> = {}
@@ -463,15 +610,28 @@ export function initializeSimulationState(world: World, scenario: Scenario): Sim
     towerDetection[tower.id] = { position: tower.position, detectionRadiusMeters: tower.detectionRadiusMeters }
   }
 
-  const derived = deriveDronesAndEvents(dronePatrolParams, towerDetection, scenario.events, 0, initialDroneActivity, {})
+  const { scenarioEvents, scenarioFireIgnitions } = partitionScenarioEntries(scenario.events)
+
+  const derived = deriveDronesEventsAndFires(
+    dronePatrolParams,
+    towerDetection,
+    scenarioEvents,
+    scenarioFireIgnitions,
+    0,
+    initialDroneActivity,
+    {},
+    {},
+  )
 
   return {
     elapsedSimSeconds: 0,
     dronePatrol: derived.dronePatrol,
     droneActivity: derived.droneActivity,
     towerDetection,
-    scenarioEvents: scenario.events,
+    scenarioEvents,
+    scenarioFireIgnitions,
     events: derived.events,
+    fires: derived.fires,
   }
 }
 
@@ -483,26 +643,30 @@ export function initializeSimulationState(world: World, scenario: Scenario): Sim
  * same `state` and `elapsedSimSeconds` always returns identical positions
  * no matter how many times or in what order it's called for a Drone that
  * stays `'patrolling'` throughout (see the determinism tests in
- * `advanceSimulation.test.ts`). Event `status` and Drone `droneActivity`
- * are, however, genuinely history-dependent — Detection is monotonic (see
- * `eventWithDetectionApplied`) and a dispatched Drone's investigation has a
+ * `advanceSimulation.test.ts`). Event `status`, Fire `tier`, and Drone
+ * `droneActivity` are, however, genuinely history-dependent — Detection is
+ * monotonic for both Events and Fires (see `eventWithDetectionApplied`/
+ * `fireWithDetectionApplied`) and a dispatched Drone's investigation has a
  * start time and duration (see `activityAfterInvestigationExpiry`) — so
- * this reads `state.events`/`state.droneActivity` as memory; the same
- * `state` + `elapsedSimSeconds` pair still always produces the same output
- * (it's a pure function of both), it's just that this output legitimately
- * depends on `state`, not on `elapsedSimSeconds` alone. Has no dependency
- * on React, Leaflet, or wall-clock time — see `useSimulationClock` for that
- * layer, which is responsible for actually feeding each tick's result back
- * in as the next tick's `state` so this memory persists.
+ * this reads `state.events`/`state.fires`/`state.droneActivity` as memory;
+ * the same `state` + `elapsedSimSeconds` pair still always produces the
+ * same output (it's a pure function of both), it's just that this output
+ * legitimately depends on `state`, not on `elapsedSimSeconds` alone. Has no
+ * dependency on React, Leaflet, or wall-clock time — see
+ * `useSimulationClock` for that layer, which is responsible for actually
+ * feeding each tick's result back in as the next tick's `state` so this
+ * memory persists.
  */
 export function advanceSimulation(state: SimulationState, elapsedSimSeconds: number): SimulationState {
-  const derived = deriveDronesAndEvents(
+  const derived = deriveDronesEventsAndFires(
     state.dronePatrol,
     state.towerDetection,
     state.scenarioEvents,
+    state.scenarioFireIgnitions,
     elapsedSimSeconds,
     state.droneActivity,
     state.events,
+    state.fires,
   )
 
   return {
@@ -511,6 +675,8 @@ export function advanceSimulation(state: SimulationState, elapsedSimSeconds: num
     droneActivity: derived.droneActivity,
     towerDetection: state.towerDetection,
     scenarioEvents: state.scenarioEvents,
+    scenarioFireIgnitions: state.scenarioFireIgnitions,
     events: derived.events,
+    fires: derived.fires,
   }
 }

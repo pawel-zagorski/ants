@@ -58,11 +58,11 @@ describe('"Quiet Day" produces only Fallen Tree Detections, never a Fire Detecti
     expect(scenario.events.some((event) => event.type === 'Fire')).toBe(false)
   })
 
-  it('never produces an Event with type Fire and status other than undetected, at any tick over a 400s run', () => {
+  it('never produces a Fire with a tier other than undetected, at any tick over a 400s run', () => {
     const ticksWithAFireDetection: number[] = []
     runScenario(scenario, 400, (state) => {
-      for (const event of Object.values(state.events)) {
-        if (event.type === 'Fire' && event.status !== 'undetected') {
+      for (const fire of Object.values(state.fires)) {
+        if (fire.tier !== 'undetected') {
           ticksWithAFireDetection.push(state.elapsedSimSeconds)
         }
       }
@@ -93,57 +93,38 @@ describe('"Quiet Day" produces only Fallen Tree Detections, never a Fire Detecti
   })
 })
 
-describe('"Wildfire Outbreak" — Tower Detection followed by a Drone dispatch/investigate/resolve cycle', () => {
+describe('"Wildfire Outbreak" — Tower Detection of a Fire (issue Q: Fire dispatch/investigation is out of scope here)', () => {
   const scenario = parseScenario(wildfireOutbreakJson)
   const fireId = 'wildfire-outbreak-fire-1'
   const spawnAtSimSeconds = (scenario.events[0].spawnAtSimSeconds ?? 0)
 
   it('is undetected before its spawn time', () => {
     const state = runScenario(scenario, spawnAtSimSeconds - 1)
-    expect(state.events[fireId]).toBeUndefined()
+    expect(state.fires[fireId]).toBeUndefined()
   })
 
-  it('is Detected by a Tower (not a Drone) at/just after spawn', () => {
+  it('is Tower-Detected (not by a Drone) at/just after spawn', () => {
     const state = runScenario(scenario, spawnAtSimSeconds)
-    expect(state.events[fireId].status).toBe('detected')
-    expect(state.events[fireId].detectedByAssetId).toBeDefined()
-    expect(towerIds).toContain(state.events[fireId].detectedByAssetId)
-    expect(droneIds).not.toContain(state.events[fireId].detectedByAssetId)
+    expect(state.fires[fireId].tier).toBe('towerDetected')
+    expect(state.fires[fireId].detectedByAssetId).toBeDefined()
+    expect(towerIds).toContain(state.fires[fireId].detectedByAssetId)
+    expect(droneIds).not.toContain(state.fires[fireId].detectedByAssetId)
   })
 
   it('specifically, tower-1 is the detecting Tower (within its 15km radius, per the chosen placement)', () => {
     const state = runScenario(scenario, spawnAtSimSeconds)
-    expect(state.events[fireId].detectedByAssetId).toBe('tower-1')
+    expect(state.fires[fireId].detectedByAssetId).toBe('tower-1')
   })
 
-  it('dispatches exactly one Drone to "investigating" this Event, in the same tick as Detection', () => {
+  it('does not dispatch any Drone for the Fire — Fire dispatch/investigation comes in a later issue', () => {
     const state = runScenario(scenario, spawnAtSimSeconds)
     const investigating = Object.entries(state.droneActivity).filter(([, activity]) => activity.mode === 'investigating')
-    expect(investigating).toHaveLength(1)
-    const [droneId, activity] = investigating[0]
-    expect(droneIds).toContain(droneId)
-    expect(activity).toMatchObject({ assignedEventId: fireId })
+    expect(investigating).toHaveLength(0)
   })
 
-  it('the dispatched Drone reverts to "patrolling" once the investigation interval elapses', () => {
-    const stateDuring = runScenario(scenario, spawnAtSimSeconds + INVESTIGATION_DURATION_SIM_SECONDS - 1)
-    const stillInvestigating = Object.values(stateDuring.droneActivity).filter((activity) => activity.mode === 'investigating')
-    expect(stillInvestigating).toHaveLength(1)
-
-    const stateAfter = runScenario(scenario, spawnAtSimSeconds + INVESTIGATION_DURATION_SIM_SECONDS)
-    const stillInvestigatingAfter = Object.values(stateAfter.droneActivity).filter((activity) => activity.mode === 'investigating')
-    expect(stillInvestigatingAfter).toHaveLength(0)
-  })
-
-  it('the Fire Event eventually resolves within a reasonable demo length', () => {
-    const durationSimSeconds = scenario.events[0].durationSimSeconds
-    expect(durationSimSeconds).toBeDefined()
-
-    const justBefore = runScenario(scenario, spawnAtSimSeconds + (durationSimSeconds as number) - 1)
-    expect(justBefore.events[fireId].status).toBe('detected')
-
-    const atResolution = runScenario(scenario, spawnAtSimSeconds + (durationSimSeconds as number))
-    expect(atResolution.events[fireId].status).toBe('resolved')
+  it('stays Tower-Detected (never auto-resolves; Fire has no "resolved" tier) well past a typical demo length', () => {
+    const state = runScenario(scenario, spawnAtSimSeconds + INVESTIGATION_DURATION_SIM_SECONDS + 120)
+    expect(state.fires[fireId].tier).toBe('towerDetected')
   })
 })
 
