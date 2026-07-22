@@ -8,6 +8,10 @@
   },
   "scripts": {
     "dev": "vite",
+    "dev:start": "scripts/dev-server.sh start",
+    "dev:stop": "scripts/dev-server.sh stop",
+    "dev:restart": "scripts/dev-server.sh restart",
+    "dev:status": "scripts/dev-server.sh status",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
