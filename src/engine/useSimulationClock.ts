@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { advanceSimulation, initializeSimulationState, withManualDispatch } from './advanceSimulation'
-import type { SimulationState } from './types'
+import { advanceSimulation, initializeSimulationState, withManualDispatch, withManualFireDispatch } from './advanceSimulation'
+import type { FireMissionKind, SimulationState } from './types'
 import type { Scenario } from '../scenario/types'
 import type { World } from '../world/types'
 
@@ -29,6 +29,15 @@ export interface SimulationClock {
    * "Send" button via `RokuaMap`.
    */
   sendDrone: (droneId: string, eventId: string) => void
+  /**
+   * Issue U's Fire-dispatch sibling of `sendDrone`: sends `droneId` to
+   * investigate `fireId` right now, carrying `missionKind` (Bingo Range
+   * "round trip" vs. One-Way Mission — see `FirePanel`'s two "Send"
+   * lists), regardless of play/pause state (same immediate-effect
+   * rationale as `sendDrone` — see `withManualFireDispatch`'s doc
+   * comment). Called by `FirePanel`'s "Send" buttons via `RokuaMap`.
+   */
+  sendDroneToFire: (droneId: string, fireId: string, missionKind: FireMissionKind) => void
 }
 
 /**
@@ -94,6 +103,11 @@ export function useSimulationClock(world: World, scenario: Scenario): Simulation
     (droneId: string, eventId: string) => setSimulationState((previous) => withManualDispatch(previous, droneId, eventId)),
     [],
   )
+  const sendDroneToFire = useCallback(
+    (droneId: string, fireId: string, missionKind: FireMissionKind) =>
+      setSimulationState((previous) => withManualFireDispatch(previous, droneId, fireId, missionKind)),
+    [],
+  )
 
-  return { simulationState, isRunning, speedMultiplier, play, pause, setSpeedMultiplier, step, sendDrone }
+  return { simulationState, isRunning, speedMultiplier, play, pause, setSpeedMultiplier, step, sendDrone, sendDroneToFire }
 }

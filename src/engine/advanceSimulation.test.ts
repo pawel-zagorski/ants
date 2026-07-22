@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { advanceSimulation, initializeSimulationState, withManualDispatch } from './advanceSimulation'
+import { advanceSimulation, initializeSimulationState, withManualDispatch, withManualFireDispatch } from './advanceSimulation'
 import { INVESTIGATION_DURATION_SIM_SECONDS } from './dispatch'
 import { haversineDistanceMeters } from '../test/haversineDistanceMeters'
 import { createWorldFixture, droneSpecFixture, windFixture } from '../test/worldFixtures'
@@ -749,6 +749,128 @@ describe('withManualDispatch (issue O)', () => {
     const snapshotBefore = JSON.parse(JSON.stringify(state))
 
     withManualDispatch(state, 'drone-1', 'person-1')
+
+    expect(state).toEqual(snapshotBefore)
+  })
+})
+
+describe('withManualFireDispatch (issue U)', () => {
+  const firePosition = { lat: 64.55, lng: 26.25 }
+
+  function towerDetectedFireScenario(): Scenario {
+    return { events: [{ id: 'fire-1', type: 'Fire', position: firePosition, spawnAtSimSeconds: 0 }], wind: TEST_WIND }
+  }
+
+  // A Tower sitting right on the Fire's position, so Detection happens
+  // deterministically at elapsedSimSeconds 0 — isolating "does
+  // withManualFireDispatch behave correctly" from "did the Fire get
+  // Detected in the first place".
+  function worldWithDrone(droneType: 'Quadrocopter' | 'FixedWingDrone', droneId = 'drone-1'): World {
+    return createWorldFixture({
+      towers: [{ id: 'tower-1', type: 'Tower', position: firePosition, detectionRadiusMeters: 500 }],
+      baseStations: [{ id: 'base-1', type: 'BaseStation', position: firePosition }],
+      drones: [
+        {
+          id: droneId,
+          type: droneType,
+          position: firePosition,
+          homeBaseStationId: 'base-1',
+          ...droneSpecFixture,
+          patrolRadiusMeters: 1,
+          patrolSpeedMetersPerSecond: 0,
+          detectionRadiusMeters: 500,
+        },
+      ],
+    })
+  }
+
+  it('leaves a newly Tower-Detected Fire undispatched until explicitly sent', () => {
+    const state = advanceSimulation(initializeSimulationState(worldWithDrone('Quadrocopter'), towerDetectedFireScenario()), 0)
+
+    expect(state.fires['fire-1'].tier).toBe('towerDetected')
+    expect(state.droneActivity['drone-1']).toEqual({ mode: 'patrolling' })
+  })
+
+  it("starts the named Drone investigating the named Fire, as of the state's current elapsedSimSeconds, carrying the given missionKind", () => {
+    const state = advanceSimulation(initializeSimulationState(worldWithDrone('Quadrocopter'), towerDetectedFireScenario()), 42)
+
+    const dispatched = withManualFireDispatch(state, 'drone-1', 'fire-1', 'roundTrip')
+
+    expect(dispatched.droneActivity['drone-1']).toEqual({
+      mode: 'investigatingFire',
+      assignedFireId: 'fire-1',
+      investigationStartedAtSimSeconds: 42,
+      missionKind: 'roundTrip',
+    })
+  })
+
+  it('records missionKind "oneWay" for a One-Way Mission send', () => {
+    const state = advanceSimulation(initializeSimulationState(worldWithDrone('Quadrocopter'), towerDetectedFireScenario()), 0)
+
+    const dispatched = withManualFireDispatch(state, 'drone-1', 'fire-1', 'oneWay')
+
+    expect(dispatched.droneActivity['drone-1']).toMatchObject({ mode: 'investigatingFire', missionKind: 'oneWay' })
+  })
+
+  it('holds a manually-sent Quadrocopter exactly over the Fire position immediately, with no extra tick needed', () => {
+    const state = advanceSimulation(initializeSimulationState(worldWithDrone('Quadrocopter'), towerDetectedFireScenario()), 0)
+
+    const dispatched = withManualFireDispatch(state, 'drone-1', 'fire-1', 'roundTrip')
+
+    expect(dispatched.dronePatrol['drone-1'].position).toEqual(firePosition)
+  })
+
+  it('starts a manually-sent Fixed-Wing Drone circling (not hovering) the Fire, since it cannot hover', () => {
+    const state = advanceSimulation(initializeSimulationState(worldWithDrone('FixedWingDrone'), towerDetectedFireScenario()), 0)
+
+    const dispatched = withManualFireDispatch(state, 'drone-1', 'fire-1', 'roundTrip')
+
+    expect(dispatched.dronePatrol['drone-1'].position).not.toEqual(firePosition)
+    expect(haversineDistanceMeters(firePosition, dispatched.dronePatrol['drone-1'].position)).toBeLessThan(1000)
+  })
+
+  it('stays "investigatingFire" indefinitely — no fixed-duration expiry like an Event investigation (issue V/W will add a real ending condition)', () => {
+    let state = advanceSimulation(initializeSimulationState(worldWithDrone('Quadrocopter'), towerDetectedFireScenario()), 0)
+    state = withManualFireDispatch(state, 'drone-1', 'fire-1', 'roundTrip')
+
+    state = advanceSimulation(state, INVESTIGATION_DURATION_SIM_SECONDS * 10)
+
+    expect(state.droneActivity['drone-1']).toMatchObject({ mode: 'investigatingFire', assignedFireId: 'fire-1' })
+  })
+
+  it('is a no-op when the named Drone is already investigating something else', () => {
+    const state = advanceSimulation(initializeSimulationState(worldWithDrone('Quadrocopter'), towerDetectedFireScenario()), 0)
+    const dispatched = withManualFireDispatch(state, 'drone-1', 'fire-1', 'roundTrip')
+    expect(dispatched.droneActivity['drone-1']).toMatchObject({ assignedFireId: 'fire-1' })
+
+    const stillOnFire1 = withManualFireDispatch(dispatched, 'drone-1', 'fire-1', 'oneWay')
+
+    expect(stillOnFire1).toEqual(dispatched)
+  })
+
+  it('is a no-op when the named Fire is not (yet) Tower-Detected', () => {
+    const undetectedScenario: Scenario = {
+      events: [{ id: 'fire-1', type: 'Fire', position: { lat: 60, lng: 20 }, spawnAtSimSeconds: 0 }],
+      wind: TEST_WIND,
+    }
+    const state = advanceSimulation(initializeSimulationState(worldWithDrone('Quadrocopter'), undetectedScenario), 0)
+    expect(state.fires['fire-1'].tier).toBe('undetected')
+
+    expect(withManualFireDispatch(state, 'drone-1', 'fire-1', 'roundTrip')).toEqual(state)
+  })
+
+  it('is a no-op when the named Drone or Fire id is unknown', () => {
+    const state = advanceSimulation(initializeSimulationState(worldWithDrone('Quadrocopter'), towerDetectedFireScenario()), 0)
+
+    expect(withManualFireDispatch(state, 'no-such-drone', 'fire-1', 'roundTrip')).toEqual(state)
+    expect(withManualFireDispatch(state, 'drone-1', 'no-such-fire', 'roundTrip')).toEqual(state)
+  })
+
+  it('does not mutate the state object passed in', () => {
+    const state = advanceSimulation(initializeSimulationState(worldWithDrone('Quadrocopter'), towerDetectedFireScenario()), 0)
+    const snapshotBefore = JSON.parse(JSON.stringify(state))
+
+    withManualFireDispatch(state, 'drone-1', 'fire-1', 'roundTrip')
 
     expect(state).toEqual(snapshotBefore)
   })

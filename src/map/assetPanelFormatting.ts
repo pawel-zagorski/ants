@@ -1,5 +1,5 @@
 import type { DroneTelemetryState } from '../engine/telemetry'
-import type { FireTier } from '../engine/types'
+import type { FireMissionKind, FireTier } from '../engine/types'
 
 /** Renders a battery telemetry value (0-100) as a rounded whole-percent string, e.g. "84%". */
 export function formatBatteryPercent(batteryPercent: number): string {
@@ -56,4 +56,14 @@ const FIRE_TIER_LABELS: Record<FireTier, string> = {
 /** Renders a {@link FireTier} discriminant as its exact `CONTEXT.md` display term, mirroring `eventTypeLabel`'s Event-side equivalent. */
 export function fireTierLabel(tier: FireTier): string {
   return FIRE_TIER_LABELS[tier]
+}
+
+const FIRE_MISSION_KIND_LABELS: Record<FireMissionKind, string> = {
+  roundTrip: 'Round Trip (Bingo Range)',
+  oneWay: 'One-Way Mission',
+}
+
+/** Renders a {@link FireMissionKind} discriminant (issue U) as a display label, naming the `CONTEXT.md` term it corresponds to. */
+export function fireMissionKindLabel(missionKind: FireMissionKind): string {
+  return FIRE_MISSION_KIND_LABELS[missionKind]
 }

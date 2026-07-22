@@ -27,6 +27,23 @@ export interface DronePatrolState {
 }
 
 /**
+ * Which kind of Fire dispatch a Drone is currently flying, per ADR-0006 and
+ * `CONTEXT.md`'s **Bingo Range** and **One-Way Mission** entries — set once, at
+ * `withManualFireDispatch` time (see `advanceSimulation.ts`), from whichever
+ * of `FirePanel`'s two lists the operator picked the Drone from.
+ * `'roundTrip'` (Bingo Range) means the Drone's `remainingEnduranceSimSeconds`
+ * covered the full fly-out/orbit/fly-back budget at send time; `'oneWay'`
+ * (One-Way Mission) means it only covered reaching the Fire, and the
+ * operator knowingly accepted the Drone won't return to any Base Station.
+ * This distinction doesn't change anything by itself in this slice — it
+ * exists purely so future issues can key different ending behavior off it:
+ * issue V's "complete one orbit lap, then resume patrol" only applies to
+ * `'roundTrip'`; issue W's "keep orbiting until endurance hits zero, then
+ * become Lost in place" only applies to `'oneWay'`.
+ */
+export type FireMissionKind = 'roundTrip' | 'oneWay'
+
+/**
  * A single Drone's current dispatch/investigate activity (issue F), kept as
  * a sibling `Record<droneId, DroneActivityState>` on {@link SimulationState}
  * rather than folded into {@link DronePatrolState}, since it's
@@ -38,14 +55,33 @@ export interface DronePatrolState {
  * `elapsedSimSeconds` value) — together these are enough for
  * `advanceSimulation` to compute both "how long has this Drone been
  * investigating" (to know when to revert to `'patrolling'`) and its
- * hover/circle position. Deliberately an extensible union rather than a
- * boolean flag: issue G's battery/endurance telemetry is expected to add
- * further modes (e.g. `'returningToBase'`, `'charging'`) without a breaking
- * change here.
+ * hover/circle position. `'investigatingFire'` (issue U) is the Fire-dispatch
+ * sibling of `'investigating'`: same shape, but keyed by `assignedFireId`
+ * rather than `assignedEventId`, plus a {@link FireMissionKind} recording
+ * which of `FirePanel`'s two lists the Drone was sent from. It is
+ * deliberately kept as its own variant rather than a generic
+ * `assignedTargetId` on `'investigating'` (ADR-0004: Fire is not a kind of
+ * Event, so its dispatch state stays its own variant too, mirroring
+ * `FireRuntimeState` vs. `EventRuntimeState`), and deliberately has no
+ * expiry timer of its own yet — unlike `'investigating'`'s fixed
+ * `INVESTIGATION_DURATION_SIM_SECONDS`, a Fire investigation's end
+ * condition depends on `missionKind` (one orbit lap vs. endurance
+ * exhaustion) and is issue V/W's job to compute; `advanceSimulation` treats
+ * it as sticky (carried forward unchanged) until then. Deliberately an
+ * extensible union rather than a boolean flag: issue G's battery/endurance
+ * telemetry already added `'investigating'`'s sibling modes this way, and
+ * future issues (V/W) are expected to add further ones (e.g. `'lost'`)
+ * without a breaking change here.
  */
 export type DroneActivityState =
   | { mode: 'patrolling' }
   | { mode: 'investigating'; assignedEventId: string; investigationStartedAtSimSeconds: number }
+  | {
+      mode: 'investigatingFire'
+      assignedFireId: string
+      investigationStartedAtSimSeconds: number
+      missionKind: FireMissionKind
+    }
 
 /**
  * A Tower's fixed position and detection radius, carried through

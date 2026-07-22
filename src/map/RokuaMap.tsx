@@ -79,9 +79,12 @@ function isDroneAsset(asset: Asset): asset is Drone {
  * the default view, which shows only `FireMarkers`' plain marker/tier icon
  * until a later issue (S) adds the Uncertainty Ellipse/Confirmed Shape
  * default-view treatments. Clicking a clickable (non-`'undetected'`) Fire
- * marker instead opens `FirePanel` (issue T): its read-only Detection
- * Status (detecting Tower id/time, current tier) — no dispatch UI on this
- * panel yet, that's issue U.
+ * marker instead opens `FirePanel` (issue T/U): its read-only Detection
+ * Status (detecting Tower id/time, current tier) plus a Bingo Range/One-Way
+ * Mission "Send" split (issue U, ADR-0006) — `onSend` wires straight to
+ * `useSimulationClock.sendDroneToFire`, mirroring `EventPanel`'s `onSend`/
+ * `sendDrone` wiring above but carrying which list the Drone was sent from
+ * as its `missionKind`.
  */
 export function RokuaMap({ world, scenario }: RokuaMapProps) {
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null)
@@ -183,6 +186,10 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
         <FirePanel
           fire={selectedFire}
           startDateTimeIso={scenario.startDateTimeIso}
+          simulationState={clock.simulationState}
+          drones={world.drones}
+          baseStations={liveWorld.baseStations}
+          onSend={(droneId, missionKind) => clock.sendDroneToFire(droneId, selectedFire.id, missionKind)}
           onClose={() => setSelectedFireId(null)}
         />
       )}
