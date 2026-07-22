@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react'
-import { MapContainer, TileLayer } from 'react-leaflet'
+import { useEffect, useMemo, useState } from 'react'
+import { MapContainer, TileLayer, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import { toLeafletBounds } from './geo'
 import { AssetMarkers } from './AssetMarkers'
 import { AssetPanel } from './AssetPanel'
 import { ConfirmedShapeLayer } from './ConfirmedShapeLayer'
+import { EventLogPanel } from './EventLogPanel'
 import { DatalinkLines } from './DatalinkLines'
 import { DroneFlightPaths } from './DroneFlightPaths'
 import { EventMarkers } from './EventMarkers'
@@ -47,6 +48,24 @@ function allAssets(world: World): Asset[] {
 
 function isDroneAsset(asset: Asset): asset is Drone {
   return asset.type === 'Quadrocopter' || asset.type === 'FixedWingDrone'
+}
+
+/**
+ * Leaflet sizes its container once, on mount, from that container's then-
+ * current dimensions. Under the flex column layout (issue Event Log), the
+ * map now lives in a `flex: 1` area above a fixed bottom strip rather than
+ * spanning the whole viewport, so this nudges Leaflet to re-measure after
+ * the flex layout settles — otherwise a map mounted before its flex parent
+ * has resolved its height can render with stale/zero tile dimensions. A
+ * no-op render component (mirrors the codebase's other map-child helpers);
+ * lives inside `MapContainer` purely so it can call `useMap()`.
+ */
+function MapResizeInvalidator() {
+  const map = useMap()
+  useEffect(() => {
+    map.invalidateSize()
+  }, [map])
+  return null
 }
 
 /**
@@ -141,8 +160,11 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
       : undefined
 
   return (
-    <MapContainer bounds={toLeafletBounds(world.bounds)} className="rokua-map">
-      <TileLayer url={OSM_TILE_URL} attribution={OSM_ATTRIBUTION} />
+    <div className="simulation-layout">
+      <div className="map-area">
+        <MapContainer bounds={toLeafletBounds(world.bounds)} className="rokua-map">
+          <MapResizeInvalidator />
+          <TileLayer url={OSM_TILE_URL} attribution={OSM_ATTRIBUTION} />
       <DatalinkLines world={liveWorld} droneActivity={clock.simulationState.droneActivity} />
       <DroneFlightPaths simulationState={clock.simulationState} />
       <AssetMarkers
@@ -225,11 +247,14 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
           onClose={() => setSelectedFireId(null)}
         />
       )}
-      <div className="bottom-controls">
-        <SimulationClockPanel clock={clock} startDateTimeIso={scenario.startDateTimeIso} />
-        <GroundTruthToggle enabled={groundTruthViewEnabled} onChange={setGroundTruthViewEnabled} />
-        <WindIndicator wind={scenario.wind} />
+          <div className="bottom-controls">
+            <SimulationClockPanel clock={clock} startDateTimeIso={scenario.startDateTimeIso} />
+            <GroundTruthToggle enabled={groundTruthViewEnabled} onChange={setGroundTruthViewEnabled} />
+            <WindIndicator wind={scenario.wind} />
+          </div>
+        </MapContainer>
       </div>
-    </MapContainer>
+      <EventLogPanel log={clock.simulationState.log} scenario={scenario} world={world} />
+    </div>
   )
 }
