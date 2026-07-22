@@ -1,4 +1,5 @@
 import type { LatLng } from '../map/geo'
+import type { EventLogEntry } from './eventLog'
 import type { HexCoordinate } from './growthEllipse'
 import type { EventType, ScenarioEvent, ScenarioFireIgnition, Wind } from '../scenario/types'
 import type { DroneType } from '../world/types'
@@ -352,4 +353,19 @@ export interface SimulationState {
   events: Record<string, EventRuntimeState>
   fires: Record<string, FireRuntimeState>
   wind: Wind
+  /**
+   * The engine-emitted Event Log (ADR-0008, `CONTEXT.md`'s **Event Log** /
+   * **Log Entry** entries): an append-only, chronological (oldest-first)
+   * feed of structured {@link EventLogEntry} records, stamped with the exact
+   * sim-second each transition occurred. Emitted by `advanceSimulation` and
+   * the `withManual*` command functions (never diffed from snapshots — see
+   * ADR-0008: `activityAfterInvestigationExpiry` can collapse several
+   * transitions into one tick at high speed, so each is logged the moment it
+   * happens rather than reconstructed after the fact). Capped at
+   * `EVENT_LOG_CAP` entries, dropping oldest (see `appendLogEntry`). The UI
+   * reverses this for its newest-at-top display and formats each entry's
+   * human-readable line/timestamp — the engine keeps only typed payloads,
+   * never pre-rendered strings.
+   */
+  log: EventLogEntry[]
 }
