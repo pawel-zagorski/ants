@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { parseScenario, ScenarioValidationError } from './schema'
 
 const validScenario = {
+  startDateTimeIso: '2025-06-14T12:00:00Z',
   events: [
     {
       id: 'event-1',
@@ -77,8 +78,20 @@ describe('parseScenario', () => {
     expect(() => parseScenario(badDuration)).toThrow(/durationSimSeconds/)
   })
 
+  it('throws when startDateTimeIso is missing (the Scenario Epoch, CONTEXT.md)', () => {
+    const { startDateTimeIso, ...missingEpoch } = validScenario
+    expect(startDateTimeIso).toBeDefined()
+    expect(() => parseScenario(missingEpoch)).toThrow(/startDateTimeIso/)
+  })
+
+  it('throws when startDateTimeIso is present but unparseable as a date/time', () => {
+    const unparseableEpoch = { ...validScenario, startDateTimeIso: 'not-a-date' }
+    expect(() => parseScenario(unparseableEpoch)).toThrow(/startDateTimeIso/)
+  })
+
   it('throws when two Events share the same id', () => {
     const duplicateIds = {
+      startDateTimeIso: '2025-06-14T12:00:00Z',
       events: [
         { id: 'event-1', type: 'Fire', position: { lat: 64.5, lng: 26.3 }, spawnAtSimSeconds: 0 },
         { id: 'event-1', type: 'FallenTree', position: { lat: 64.6, lng: 26.4 }, spawnAtSimSeconds: 10 },

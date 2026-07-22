@@ -28,4 +28,16 @@ export interface ScenarioEvent {
  */
 export interface Scenario {
   events: ScenarioEvent[]
+  /**
+   * The Scenario Epoch (`CONTEXT.md`): the real calendar date/time, as an
+   * ISO 8601 string, that `elapsedSimSeconds = 0` corresponds to. Every
+   * timestamp shown in the UI is this Epoch plus elapsed Simulation Clock
+   * time (see `../engine/scenarioEpoch.ts`). `parseScenario` rejects any
+   * `scenario-*.json` missing this or with an unparseable value, so every
+   * real (loaded) Scenario is guaranteed to have one — kept optional on
+   * this type only so the many hand-built `Scenario` fixtures in engine/UI
+   * tests that don't care about calendar time aren't forced to supply a
+   * placeholder value.
+   */
+  startDateTimeIso?: string
 }

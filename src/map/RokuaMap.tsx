@@ -104,7 +104,7 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
         />
       )}
       <div className="bottom-controls">
-        <SimulationClockPanel clock={clock} />
+        <SimulationClockPanel clock={clock} startDateTimeIso={scenario.startDateTimeIso} />
         <GroundTruthToggle enabled={groundTruthViewEnabled} onChange={setGroundTruthViewEnabled} />
       </div>
     </MapContainer>

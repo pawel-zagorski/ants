@@ -16,6 +16,7 @@ function fakeFetch(response: { ok: boolean; status?: number; statusText?: string
 describe('loadScenario', () => {
   it('resolves with a validated Scenario when the fetched JSON matches the schema', async () => {
     const validBody = {
+      startDateTimeIso: '2025-06-14T12:00:00Z',
       events: [
         {
           id: 'event-1',
