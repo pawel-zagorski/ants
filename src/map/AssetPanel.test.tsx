@@ -247,6 +247,64 @@ describe('AssetPanel Drone telemetry (issue G)', () => {
   })
 })
 
+describe('AssetPanel Return Envelope legend + Return to Nearest Base (ADR-0007, issue K)', () => {
+  const simulationState = simulationStateFixture({
+    dronePatrol: { 'drone-1': patrollingPatrol },
+    droneActivity: { 'drone-1': { mode: 'patrolling' } },
+  })
+
+  it('shows the Return Envelope legend entry only when the envelope is shown', () => {
+    const { rerender } = render(
+      <AssetPanel asset={drone} simulationState={simulationState} drones={[drone]} showReturnEnvelope onClose={vi.fn()} />,
+    )
+    expect(screen.getByText('Return Envelope')).toBeInTheDocument()
+
+    rerender(
+      <AssetPanel asset={drone} simulationState={simulationState} drones={[drone]} showReturnEnvelope={false} onClose={vi.fn()} />,
+    )
+    expect(screen.queryByText('Return Envelope')).toBeNull()
+  })
+
+  it('does not show the legend entry for a non-Drone asset', () => {
+    render(<AssetPanel asset={tower} simulationState={simulationStateFixture()} drones={[]} showReturnEnvelope onClose={vi.fn()} />)
+
+    expect(screen.queryByText('Return Envelope')).toBeNull()
+  })
+
+  it('shows a "Return to Nearest Base" button when the Drone can be recalled, and calls onReturnToBase', () => {
+    const onReturnToBase = vi.fn()
+    render(
+      <AssetPanel
+        asset={drone}
+        simulationState={simulationState}
+        drones={[drone]}
+        canReturnToBase
+        onReturnToBase={onReturnToBase}
+        onClose={vi.fn()}
+      />,
+    )
+
+    const button = screen.getByRole('button', { name: 'Return to Nearest Base' })
+    fireEvent.click(button)
+    expect(onReturnToBase).toHaveBeenCalledOnce()
+  })
+
+  it('hides the recall button when the Drone cannot be recalled', () => {
+    render(
+      <AssetPanel
+        asset={drone}
+        simulationState={simulationState}
+        drones={[drone]}
+        canReturnToBase={false}
+        onReturnToBase={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: 'Return to Nearest Base' })).toBeNull()
+  })
+})
+
 describe('AssetPanel Drone photo + Model/Payload (issue J)', () => {
   it("shows the Drone's own photo and its Model/Payload rows", () => {
     const mavic: Drone = { ...drone, model: 'DJI Mavic 4 Pro', payload: 'Optical', imageUrl: '/img/dji_mavic_4_pro.jpeg' }

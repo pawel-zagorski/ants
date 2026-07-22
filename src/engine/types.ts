@@ -153,6 +153,45 @@ export type DroneActivityState =
       returnStartedAtSimSeconds: number
     }
   /**
+   * Transit state entered the instant the operator manually recalls a Drone
+   * via the status panel's "Return to Nearest Base" button
+   * (`withManualReturnToBase`): the Drone abandons whatever it was doing and
+   * flies straight toward `targetPosition` (its *nearest* Base Station's
+   * position, chosen at recall time from its live position) at
+   * `DronePatrolState.cruiseSpeedMetersPerSecond`, linearly interpolating from
+   * `departurePosition` (its position at recall). Deliberately kept separate
+   * from `'returningToBase'` (the post-orbit round-trip return that reverts to
+   * `'patrolling'` at `patrolCenter`): this one targets a real Base Station
+   * and ends in the terminal `'grounded'` state instead — see ADR-0007 /
+   * `CONTEXT.md`'s **Grounded** entry. Transitions (via
+   * `activityAfterInvestigationExpiry`) to `'grounded'` the tick the elapsed
+   * return time meets or exceeds the distance ÷ cruise-speed return duration,
+   * or to `'lost'` if this Drone's live `remainingEnduranceSimSeconds` reaches
+   * zero before it arrives (honoring endurance, same "just enough to make it
+   * back" framing as the One-Way Mission's Lost check).
+   */
+  | {
+      mode: 'returningToStation'
+      targetPosition: LatLng
+      departurePosition: LatLng
+      returnStartedAtSimSeconds: number
+    }
+  /**
+   * Terminal state (ADR-0007, `CONTEXT.md`'s **Grounded** entry) a Drone
+   * enters once it completes a manual return-to-base flight
+   * (`'returningToStation'`): parked at its nearest Base Station's
+   * `position`, permanently out of service for the rest of the run and
+   * excluded from dispatch (the `'patrolling'`-only dispatch guards in
+   * `withManualDispatch`/`withManualFireDispatch` and the panels' available-
+   * Drone filters already exclude it, since its mode is not `'patrolling'`).
+   * There is no recharge/relaunch (ADR-0007): endurance stays the closed-form
+   * drain from t=0, so a Grounded Drone stays Grounded. Distinct from
+   * `'lost'` (sacrificed in the field on a One-Way Mission, or run out mid-
+   * return): Grounded made it safely home. Once `'grounded'`, a Drone never
+   * leaves this mode — same monotonic/sticky spirit as `'lost'`.
+   */
+  | { mode: 'grounded'; position: LatLng; groundedAtSimSeconds: number }
+  /**
    * Terminal state (issue W, `CONTEXT.md`'s **Lost** entry) a `'oneWay'`
    * Drone falls into the instant its live `remainingEnduranceSimSeconds` hits
    * zero — whether it was still `'travelingToFire'` or already

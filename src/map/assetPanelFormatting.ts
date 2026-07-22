@@ -41,6 +41,7 @@ const DRONE_TELEMETRY_STATE_LABELS: Record<DroneTelemetryState, string> = {
   charging: 'Charging',
   fault: 'Fault',
   lost: 'Lost',
+  grounded: 'Grounded',
 }
 
 /** Renders a {@link DroneTelemetryState} discriminant as a title-cased display label. */

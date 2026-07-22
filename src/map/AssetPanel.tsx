@@ -26,6 +26,24 @@ export interface AssetPanelProps {
   simulationState: SimulationState
   /** The World's full Drone roster — used to resolve which Drones are homed at a Base Station (issue G). */
   drones: readonly Drone[]
+  /**
+   * Whether the Return Envelope overlay is currently shown for this Drone
+   * (issue K) — `RokuaMap` passes the same condition it uses to render
+   * `<ReturnEnvelope>`. When true, this panel shows an inline legend entry
+   * explaining the light-blue ellipse, so the explanation only appears while
+   * the overlay it describes is actually on the map (rather than as an
+   * always-on map legend). Only ever true for a Drone whose panel shows a
+   * live Return Envelope.
+   */
+  showReturnEnvelope?: boolean
+  /**
+   * Whether this Drone can currently be manually recalled to its nearest Base
+   * Station (ADR-0007) — `RokuaMap` passes `canReturnDroneToBase` for the
+   * selected Drone. Gates the "Return to Nearest Base" button's visibility.
+   */
+  canReturnToBase?: boolean
+  /** Recalls this Drone to its nearest Base Station — wired to `useSimulationClock.returnDroneToNearestBase`. */
+  onReturnToBase?: () => void
   onClose: () => void
 }
 
@@ -76,7 +94,15 @@ function assetPhotoFor(asset: Asset, isDrone: boolean): { src: string; alt: stri
  * "live-update while the clock runs" rather than freezing at whatever they
  * were when the panel was opened.
  */
-export function AssetPanel({ asset, simulationState, drones, onClose }: AssetPanelProps) {
+export function AssetPanel({
+  asset,
+  simulationState,
+  drones,
+  showReturnEnvelope = false,
+  canReturnToBase = false,
+  onReturnToBase,
+  onClose,
+}: AssetPanelProps) {
   const { fires, dronePatrol, droneActivity, elapsedSimSeconds } = simulationState
   const typeLabel = assetTypeLabel(asset.type)
   const trackedFire = asset.type === 'Tower' ? trackedFireFor(asset.id, fires) : undefined
@@ -160,6 +186,26 @@ export function AssetPanel({ asset, simulationState, drones, onClose }: AssetPan
           </>
         )}
       </dl>
+      {isDrone && (canReturnToBase || showReturnEnvelope) && (
+        <div className="asset-panel-drone-actions">
+          {canReturnToBase && onReturnToBase && (
+            <button type="button" className="asset-panel-return-button" onClick={onReturnToBase}>
+              Return to Nearest Base
+            </button>
+          )}
+          {showReturnEnvelope && (
+            <div className="asset-panel-legend" role="group" aria-label="Return Envelope legend">
+              <span className="asset-panel-legend-swatch" aria-hidden="true" />
+              <div className="asset-panel-legend-text">
+                <span className="asset-panel-legend-label">Return Envelope</span>
+                <span className="asset-panel-legend-description">
+                  Everywhere this Drone can still reach and get back to a Base Station on its remaining endurance.
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

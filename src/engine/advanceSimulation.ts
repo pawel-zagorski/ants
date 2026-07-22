@@ -493,7 +493,7 @@ function activityAfterInvestigationExpiry(
   // A large time jump can skip multiple phases in one tick (e.g. travelling →
   // arrived → orbit complete → returned). Keep applying transitions until the
   // state stabilises (same reference = no change, or a terminal state).
-  if (next !== incomingActivity && next.mode !== 'patrolling' && next.mode !== 'lost') {
+  if (next !== incomingActivity && next.mode !== 'patrolling' && next.mode !== 'lost' && next.mode !== 'grounded') {
     return activityAfterInvestigationExpiry(next, elapsedSimSeconds, patrol, incomingFires)
   }
 
@@ -512,6 +512,14 @@ function activityAfterOneTransition(
 
   if (incomingActivity.mode === 'lost') {
     return incomingActivity
+  }
+
+  if (incomingActivity.mode === 'grounded') {
+    return incomingActivity
+  }
+
+  if (incomingActivity.mode === 'returningToStation') {
+    return activityAfterManualReturnTransition(incomingActivity, elapsedSimSeconds, patrol)
   }
 
   if (incomingActivity.mode === 'travelingToFire') {
@@ -688,6 +696,62 @@ function droneActivityAfterLostCheck(
 }
 
 /**
+ * A manually-recalled (`'returningToStation'`) Drone's activity after
+ * advancing to `elapsedSimSeconds` — the return-to-base sibling of
+ * {@link droneActivityAfterLostCheck}, resolving the three outcomes of a
+ * recall flight toward `activity.targetPosition` (its nearest Base Station):
+ *
+ * - **Grounded on arrival**: once the elapsed return time meets or exceeds
+ *   the straight-line distance ÷ `cruiseSpeedMetersPerSecond` duration (or
+ *   immediately, for the degenerate already-at-base / zero-speed case), the
+ *   Drone parks at `targetPosition` and enters the terminal `'grounded'`
+ *   state — ADR-0007's "flies to that nearest Base Station, and enters a new
+ *   terminal Grounded state".
+ * - **Lost en route**: if the flight would finish after this Drone's
+ *   `maxEnduranceSimSeconds` (it cannot actually make it home) and its live
+ *   `remainingEnduranceSimSeconds` has already hit zero, it becomes `'lost'`
+ *   frozen exactly where it ran out — same closed-form
+ *   `lostAtSimSeconds = maxEnduranceSimSeconds` snapshot as
+ *   {@link droneActivityAfterLostCheck}.
+ * - **Still en route**: otherwise carried forward unchanged (sticky), same
+ *   treatment as a still-in-transit `'travelingToFire'`.
+ */
+function activityAfterManualReturnTransition(
+  activity: Extract<DroneActivityState, { mode: 'returningToStation' }>,
+  elapsedSimSeconds: number,
+  patrol: DronePatrolState,
+): DroneActivityState {
+  const { departurePosition, targetPosition, returnStartedAtSimSeconds } = activity
+  const returnDistance = distanceMetersBetween(departurePosition, targetPosition)
+
+  if (returnDistance <= 0 || patrol.cruiseSpeedMetersPerSecond <= 0) {
+    return { mode: 'grounded', position: targetPosition, groundedAtSimSeconds: returnStartedAtSimSeconds }
+  }
+
+  const returnDuration = returnDistance / patrol.cruiseSpeedMetersPerSecond
+  const arrivalSimSeconds = returnStartedAtSimSeconds + returnDuration
+
+  // Endurance gate (ADR-0007 / issue W spirit): if this Drone cannot reach
+  // its nearest Base Station before its endurance runs out, it becomes Lost
+  // exactly where and when it ran out — never Grounded.
+  if (arrivalSimSeconds > patrol.maxEnduranceSimSeconds) {
+    if (remainingEnduranceSimSecondsAt(elapsedSimSeconds, patrol.maxEnduranceSimSeconds) > 0) {
+      return activity
+    }
+    const lostAtSimSeconds = patrol.maxEnduranceSimSeconds
+    const progress = (lostAtSimSeconds - returnStartedAtSimSeconds) / returnDuration
+    const position = interpolateLatLng(departurePosition, targetPosition, Math.min(1, Math.max(0, progress)))
+    return { mode: 'lost', position, lostAtSimSeconds }
+  }
+
+  if (elapsedSimSeconds - returnStartedAtSimSeconds >= returnDuration) {
+    return { mode: 'grounded', position: targetPosition, groundedAtSimSeconds: arrivalSimSeconds }
+  }
+
+  return activity
+}
+
+/**
  * A patrolling Drone's absolute angle (radians) around its patrol loop at
  * `elapsedSimSeconds` — the closed-form `phaseOffsetRadians +
  * angularSpeedRadiansPerSecond * elapsedSimSeconds` shared by
@@ -777,6 +841,19 @@ function positionForActivity(
     const secondsSinceReturn = elapsedSimSeconds - activity.returnStartedAtSimSeconds
     const progress = Math.min(1, secondsSinceReturn / returnDuration)
     return interpolateLatLng(activity.departurePosition, patrol.patrolCenter, progress)
+  }
+
+  if (activity.mode === 'returningToStation') {
+    const returnDistance = distanceMetersBetween(activity.departurePosition, activity.targetPosition)
+    if (returnDistance <= 0 || patrol.cruiseSpeedMetersPerSecond <= 0) return activity.targetPosition
+    const returnDuration = returnDistance / patrol.cruiseSpeedMetersPerSecond
+    const secondsSinceReturn = elapsedSimSeconds - activity.returnStartedAtSimSeconds
+    const progress = Math.min(1, secondsSinceReturn / returnDuration)
+    return interpolateLatLng(activity.departurePosition, activity.targetPosition, progress)
+  }
+
+  if (activity.mode === 'grounded') {
+    return activity.position
   }
 
   if (activity.mode === 'lost') {
@@ -1107,6 +1184,74 @@ export function withManualFireDispatch(
         departureSimSeconds,
         missionKind,
         orbitRadiusMeters,
+      },
+    },
+  }
+}
+
+/**
+ * Whether a Drone in `activity` is eligible for a manual "Return to Nearest
+ * Base" recall (ADR-0007): any *active* Drone — `'patrolling'`,
+ * `'investigating'` an Event, or on a *round-trip* Fire mission
+ * (`'travelingToFire'`/`'investigatingFire'` with `missionKind ===
+ * 'roundTrip'`) — may be recalled, abandoning whatever it was doing. A
+ * `'oneWay'` Fire mission is deliberately excluded (it is intentionally
+ * sacrificial — see `FireMissionKind`), as are Drones already heading home
+ * (`'returningToBase'`/`'returningToStation'`) or in a terminal state
+ * (`'grounded'`/`'lost'`). A missing entry defaults to eligible, mirroring
+ * the engine's "missing means patrolling" fallback elsewhere. Exported so
+ * both the engine guard in {@link withManualReturnToBase} and the status
+ * panel's button visibility read the exact same rule.
+ */
+export function canReturnDroneToBase(activity: DroneActivityState | undefined): boolean {
+  if (!activity || activity.mode === 'patrolling' || activity.mode === 'investigating') {
+    return true
+  }
+  if (activity.mode === 'travelingToFire' || activity.mode === 'investigatingFire') {
+    return activity.missionKind === 'roundTrip'
+  }
+  return false
+}
+
+/**
+ * Applies an explicit user "Return to Nearest Base" recall (ADR-0007,
+ * `CONTEXT.md`'s **Grounded** entry) on top of `state`, as of its own
+ * `elapsedSimSeconds` — the recall counterpart to
+ * {@link withManualDispatch}/{@link withManualFireDispatch}, applied
+ * immediately (rather than queued for the next tick) for the same "a button
+ * click takes effect right away, whatever the Simulation Clock's
+ * play/pause/step state" reason. `droneId` abandons whatever it was doing
+ * and switches to `'returningToStation'` starting now, flying from its
+ * current live position toward `targetPosition` (its nearest Base Station,
+ * chosen by the caller — `useSimulationClock.returnDroneToNearestBase` — from
+ * the live `World.baseStations`, kept there rather than here so this pure
+ * transition needs no `World`). From there `advanceSimulation`'s
+ * `activityAfterInvestigationExpiry` flies it home and Grounds it on arrival,
+ * or marks it Lost if its endurance runs out en route (see
+ * {@link activityAfterManualReturnTransition}). A no-op (returns `state`
+ * unchanged, same object identity) if `droneId` has no patrol state or isn't
+ * currently eligible per {@link canReturnDroneToBase} — the panel only offers
+ * the button for an eligible Drone, but this stays defensive/total rather
+ * than throwing on a stale click. The Drone's position is unchanged on this
+ * tick (it departs from exactly where it is).
+ */
+export function withManualReturnToBase(state: SimulationState, droneId: string, targetPosition: LatLng): SimulationState {
+  const patrol = state.dronePatrol[droneId]
+  const activity = state.droneActivity[droneId]
+
+  if (!patrol || !canReturnDroneToBase(activity)) {
+    return state
+  }
+
+  return {
+    ...state,
+    droneActivity: {
+      ...state.droneActivity,
+      [droneId]: {
+        mode: 'returningToStation',
+        targetPosition,
+        departurePosition: patrol.position,
+        returnStartedAtSimSeconds: state.elapsedSimSeconds,
       },
     },
   }

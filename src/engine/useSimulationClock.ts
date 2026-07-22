@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { advanceSimulation, initializeSimulationState, withManualDispatch, withManualFireDispatch } from './advanceSimulation'
+import {
+  advanceSimulation,
+  initializeSimulationState,
+  withManualDispatch,
+  withManualFireDispatch,
+  withManualReturnToBase,
+} from './advanceSimulation'
+import { findNearestRelay } from '../map/nearestRelay'
 import type { FireMissionKind, SimulationState } from './types'
 import type { Scenario } from '../scenario/types'
 import type { World } from '../world/types'
@@ -38,6 +45,17 @@ export interface SimulationClock {
    * comment). Called by `FirePanel`'s "Send" buttons via `RokuaMap`.
    */
   sendDroneToFire: (droneId: string, fireId: string, missionKind: FireMissionKind) => void
+  /**
+   * ADR-0007's manual "Return to Nearest Base" recall: sends `droneId` home
+   * to its nearest `World.baseStations` entry (by straight-line distance from
+   * its current live position) right now, regardless of play/pause state
+   * (same immediate-effect rationale as `sendDrone`). The Drone flies there
+   * and Grounds on arrival, or is Lost if its endurance runs out en route —
+   * see `withManualReturnToBase`. Called by `AssetPanel`'s "Return to Nearest
+   * Base" button via `RokuaMap`. A no-op if the World has no Base Stations or
+   * the Drone isn't currently eligible (`canReturnDroneToBase`).
+   */
+  returnDroneToNearestBase: (droneId: string) => void
 }
 
 /**
@@ -108,6 +126,28 @@ export function useSimulationClock(world: World, scenario: Scenario): Simulation
       setSimulationState((previous) => withManualFireDispatch(previous, droneId, fireId, missionKind)),
     [],
   )
+  const returnDroneToNearestBase = useCallback(
+    (droneId: string) =>
+      setSimulationState((previous) => {
+        const dronePosition = previous.dronePatrol[droneId]?.position
+        if (!dronePosition) return previous
+        const nearestBase = findNearestRelay(dronePosition, world.baseStations)
+        if (!nearestBase) return previous
+        return withManualReturnToBase(previous, droneId, nearestBase.relay.position)
+      }),
+    [world.baseStations],
+  )
 
-  return { simulationState, isRunning, speedMultiplier, play, pause, setSpeedMultiplier, step, sendDrone, sendDroneToFire }
+  return {
+    simulationState,
+    isRunning,
+    speedMultiplier,
+    play,
+    pause,
+    setSpeedMultiplier,
+    step,
+    sendDrone,
+    sendDroneToFire,
+    returnDroneToNearestBase,
+  }
 }

@@ -135,10 +135,50 @@ describe('RokuaMap', () => {
 })
 
 describe('RokuaMap Return Envelope legend', () => {
-  it('always shows the Return Envelope legend, even with nothing selected', () => {
+  it('does not show the Return Envelope legend when nothing is selected', () => {
     render(<RokuaMap world={world} scenario={emptyScenario} />)
 
+    expect(screen.queryByText(/Return Envelope/i)).toBeNull()
+  })
+
+  it('shows the Return Envelope legend inside a Drone status panel once one is opened', () => {
+    render(<RokuaMap world={world} scenario={emptyScenario} />)
+
+    fireEvent.click(document.querySelector('.asset-icon-quadrocopter') as Element)
+
     expect(screen.getByText(/Return Envelope/i)).toBeInTheDocument()
+  })
+
+  it('does not show the Return Envelope legend for a non-Drone (Tower) panel', () => {
+    render(<RokuaMap world={world} scenario={emptyScenario} />)
+
+    fireEvent.click(document.querySelector('.asset-icon-tower') as Element)
+
+    expect(screen.queryByText(/Return Envelope/i)).toBeNull()
+  })
+})
+
+describe('RokuaMap Return to Nearest Base (ADR-0007)', () => {
+  it('offers a "Return to Nearest Base" button in a Drone panel and Grounds the Drone when used', () => {
+    render(<RokuaMap world={world} scenario={emptyScenario} />)
+
+    fireEvent.click(document.querySelector('.asset-icon-quadrocopter') as Element)
+    fireEvent.click(screen.getByRole('button', { name: 'Return to Nearest Base' }))
+
+    // The Drone departs from its home Base Station (patrol center), so the
+    // return leg is ~zero and it Grounds on the next clock step.
+    fireEvent.click(screen.getByRole('button', { name: 'Step' }))
+    fireEvent.click(document.querySelector('.asset-icon-quadrocopter') as Element)
+
+    expect(screen.getByRole('dialog')).toHaveTextContent('Grounded')
+  })
+
+  it('does not offer the recall button in a Tower panel', () => {
+    render(<RokuaMap world={world} scenario={emptyScenario} />)
+
+    fireEvent.click(document.querySelector('.asset-icon-tower') as Element)
+
+    expect(screen.queryByRole('button', { name: 'Return to Nearest Base' })).toBeNull()
   })
 })
 

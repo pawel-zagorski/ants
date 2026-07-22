@@ -11,12 +11,18 @@ export interface ReturnEnvelopeProps {
   baseStations: readonly BaseStation[]
 }
 
-/** Amber/gold, dashed — visually distinct from every `.asset-icon-*`/`.event-icon-*` color in `index.css`. */
+/**
+ * Light blue, dashed — deliberately a calm, *neutral* color: the Return
+ * Envelope is informational ("where can this Drone still safely go"), not a
+ * warning, so it avoids red/amber (reserved for danger). Distinct from the
+ * darker Base Station blue (`#1d4ed8`) and the medium Datalink blue
+ * (`#2563eb`) elsewhere in `index.css`, and from every `.event-icon-*` color.
+ */
 const RETURN_ENVELOPE_PATH_OPTIONS = {
-  color: '#d97706',
+  color: '#38bdf8',
   weight: 2,
   dashArray: '6 6',
-  fillColor: '#d97706',
+  fillColor: '#38bdf8',
   fillOpacity: 0.18,
 }
 

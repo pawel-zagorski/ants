@@ -35,19 +35,29 @@ export function batteryPercentAt(elapsedSimSeconds: number, maxEnduranceSimSecon
 /**
  * The PRD's Drone `state` telemetry field ("Asset status panels"
  * Implementation Decision) names six possible values, but this engine has
- * never modeled idle/returning/charging/fault — no other issue introduces
- * battery-gated or return-to-base behavior. Kept as a (now 7-value, since
- * issue W added `'lost'`) union for forward-compatibility (the same "type
- * supports more than the engine currently produces" pattern `EventStatus`
- * already used ahead of issue G's `'resolved'`), but {@link
- * droneTelemetryFor} only ever actually produces
- * `'patrolling'`/`'investigating'`/`'lost'`, mapped 1:1 from
- * `DroneActivityState.mode`. `'lost'` (issue W, `CONTEXT.md`'s **Lost**
- * entry) is the one telemetry-state value not drawn from the PRD's
- * original six — it names this engine's own terminal
- * endurance-exhaustion state, which the PRD's list predates.
+ * never modeled idle/charging/fault. Kept as a union for
+ * forward-compatibility (the same "type supports more than the engine
+ * currently produces" pattern `EventStatus` already used ahead of issue G's
+ * `'resolved'`), but {@link droneTelemetryFor} only ever actually produces
+ * `'patrolling'`/`'investigating'`/`'returning'`/`'lost'`/`'grounded'`,
+ * mapped from `DroneActivityState.mode`. `'lost'` (issue W, `CONTEXT.md`'s
+ * **Lost** entry) and `'grounded'` (ADR-0007, `CONTEXT.md`'s **Grounded**
+ * entry) are the two telemetry-state values not drawn from the PRD's
+ * original six — they name this engine's own terminal states (field
+ * endurance-exhaustion, and manual/endurance return-to-base), which the
+ * PRD's list predates. `'returning'` is produced by a manual
+ * `'returningToStation'` recall (the post-orbit `'returningToBase'`
+ * round-trip return still reports `'investigating'`, unchanged).
  */
-export type DroneTelemetryState = 'idle' | 'patrolling' | 'investigating' | 'returning' | 'charging' | 'fault' | 'lost'
+export type DroneTelemetryState =
+  | 'idle'
+  | 'patrolling'
+  | 'investigating'
+  | 'returning'
+  | 'charging'
+  | 'fault'
+  | 'lost'
+  | 'grounded'
 
 /**
  * Full status-panel telemetry for a single Drone (issue G): everything the
@@ -179,6 +189,33 @@ export function droneTelemetryFor(
       ...(motion.headingDegrees !== undefined ? { headingDegrees: motion.headingDegrees } : {}),
       assignedFireId: activity.assignedFireId,
       missionKind: activity.missionKind,
+    }
+  }
+
+  if (activity.mode === 'returningToStation') {
+    // A manually-recalled Drone flying home to Ground (ADR-0007) reports the
+    // dedicated `'returning'` telemetry state and its cruise speed — it is no
+    // longer investigating anything, so it carries no assigned Event/Fire.
+    return {
+      state: 'returning',
+      position: patrol.position,
+      batteryPercent,
+      remainingEnduranceSimSeconds,
+      speedMetersPerSecond: patrol.cruiseSpeedMetersPerSecond,
+    }
+  }
+
+  if (activity.mode === 'grounded') {
+    // A Grounded Drone (ADR-0007) is parked at its Base Station, terminal and
+    // stationary — its own dedicated `'grounded'` telemetry state, its frozen
+    // `activity.position`, zero speed and no heading (same "stationary craft
+    // has no heading" rationale as a hovering Quadrocopter / a Lost Drone).
+    return {
+      state: 'grounded',
+      position: activity.position,
+      batteryPercent,
+      remainingEnduranceSimSeconds,
+      speedMetersPerSecond: 0,
     }
   }
 

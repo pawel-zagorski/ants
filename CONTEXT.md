@@ -57,7 +57,7 @@ The generic role either a Tower or a Base Station plays as a Datalink endpoint �
 _Avoid_: Node, ground station (use "Relay" to keep it distinct from "Base Station")
 
 **Bingo Range**:
-The set of Drones whose current `remainingEnduranceSimSeconds` is enough to fly out to a given Fire, conduct the perimeter-mapping flight, and still reach a Base Station afterward — computed from the same distance/speed math as the Return Envelope, but used as a real dispatch-eligibility gate rather than a display-only overlay. Scoped narrowly to the Fire-dispatch decision; ordinary patrol and Person Sighting/Fallen Tree dispatch remain unaffected by endurance (see ADR on endurance gating).
+The set of Drones whose current `remainingEnduranceSimSeconds` is enough to fly out to a given Fire, conduct the perimeter-mapping flight, and still reach a Base Station afterward — computed from the same distance/speed math as the Return Envelope, but used as a real dispatch-eligibility gate rather than a display-only overlay. The same math is also read continuously at runtime (ADR-0007): any active Drone that reaches Bingo Range against its *nearest* Base Station abandons its task, returns there, and becomes **Grounded** — so ordinary patrol endurance is no longer purely cosmetic. Only the One-Way Mission remains a deliberate exception, flying past Bingo Range toward a Fire it may not return from.
 _Avoid_: Bingo fuel, fuel range (Drones use energy/battery, not fuel, but "bingo" is kept as the borrowed aviation term for "just enough to still make it back")
 
 **One-Way Mission**:
@@ -99,7 +99,7 @@ The last-known real Fire Footprint as directly observed by an investigating Dron
 _Avoid_: Confirmed footprint (keep distinct from Fire Footprint, which is always the real/live ground truth regardless of what's been confirmed)
 
 **Bingo Range**:
-The set of Drones whose current `remainingEnduranceSimSeconds` is enough to fly out to a given Fire, complete one full orbit lap of its Fire Footprint/Uncertainty Ellipse, and still reach a Base Station afterward — computed from the same distance/speed math as the Return Envelope, but used as a real dispatch-eligibility gate rather than a display-only overlay. Scoped narrowly to the Fire-dispatch decision; ordinary patrol and Person Sighting/Fallen Tree dispatch remain unaffected by endurance.
+The set of Drones whose current `remainingEnduranceSimSeconds` is enough to fly out to a given Fire, complete one full orbit lap of its Fire Footprint/Uncertainty Ellipse, and still reach a Base Station afterward — computed from the same distance/speed math as the Return Envelope, but used as a real dispatch-eligibility gate rather than a display-only overlay. The same math is also read continuously at runtime (ADR-0007) to trigger any active Drone's return-to-base and **Grounded** transition once it can only just still make it back; the One-Way Mission is the sole deliberate exception.
 _Avoid_: Bingo fuel, fuel range (Drones use energy/battery, not fuel, but "bingo" is kept as the borrowed aviation term for "just enough to still make it back")
 
 **One-Way Mission**:
@@ -107,8 +107,12 @@ A Fire-investigation dispatch to a Drone that is outside Bingo Range but can sti
 _Avoid_: Suicide mission, kamikaze (use "One-Way Mission")
 
 **Lost** (Drone state):
-A terminal Drone state entered the instant a Drone dispatched on a One-Way Mission exhausts its `remainingEnduranceSimSeconds` — frozen in place, greyed out, permanently unavailable for future dispatch. The only place in this prototype where endurance is allowed to gate/end a Drone's behavior; ordinary patrol endurance remains cosmetic display only.
+A terminal Drone state entered the instant a Drone exhausts its `remainingEnduranceSimSeconds` while still in the field — frozen in place wherever it ran out, greyed out, permanently unavailable for future dispatch. The usual cause is a One-Way Mission Drone that was never expected back; it can also happen to a Drone that runs out mid-flight before reaching any Base Station (e.g. an operator manually recalls an already-depleted Drone via "Return to Nearest Base" and it can't make it home). Distinct from **Grounded**: Lost means it ran out in the field, Grounded means it made it safely home but is depleted.
 _Avoid_: Crashed, destroyed (Lost is deliberately non-specific about mechanism — this is energy depletion, not a crash simulation)
+
+**Grounded** (Drone state):
+A terminal Drone state entered when any active Drone (patrolling, investigating an Event, or on a round-trip Fire investigation) reaches Bingo Range against its nearest Base Station, flies there, and parks — permanently out of service for the rest of the run and excluded from dispatch. There is no recharge or relaunch (ADR-0007): endurance stays the closed-form drain from t=0, so a Grounded Drone stays Grounded. Contrast with **Lost** (sacrificed in the field on a One-Way Mission, frozen wherever it ran out) — Grounded made it home.
+_Avoid_: Docked, idle, parked, recharging (Grounded is terminal and specifically means depleted-at-base; "docked" is already the transient patrol-status count in `telemetry.ts`)
 
 **Detection**:
 The moment an Event's or Fire's position falls within range of an eligible, active asset (a Tower for a Fire, a Drone for any Event type or a Fire). Detection is deterministic based on distance, not probabilistic — this keeps Scenarios fully reproducible.
@@ -121,3 +125,13 @@ _Avoid_: God mode, debug view
 **Scenario Epoch**:
 The real-world calendar date/time authored once per Scenario (e.g. a `startDateTimeIso` field) that `elapsedSimSeconds = 0` corresponds to. Every timestamp displayed across the UI is Scenario Epoch + elapsed Simulation Clock time, shown as a calendar date/time rather than raw seconds.
 _Avoid_: Start time (ambiguous with the Simulation Clock's own start-at-zero)
+
+### Operator Interface
+
+**Event Log**:
+The bottom-of-page textual feed of what is happening during a run, newest line at the top, each prefixed with a Scenario-Epoch calendar timestamp (`YYYY-MM-DD HH:MM:SS` UTC). Records only the operator's known picture (fog-of-war): Detections, dispatches, and observed Drone activity (reached Fire and began orbiting, reached Bingo Range and returning, Grounded, Lost, etc.) — never Undetected ground-truth spawns, and unaffected by the Ground Truth View. Non-nominal lines (Fire discovered, One-Way Mission dispatch, Bingo-Range return, Lost) are prefixed `WARNING: `. Despite the name it is *not* a log of `Event`s specifically — it logs Fires and Drone lifecycle too; the word "log" carries the "everything happening" meaning here, not the domain `Event`.
+_Avoid_: Alert feed, notifications, activity log (a Log Entry is a textual record, not a UI alert/toast; "activity" already names `DroneActivityState`)
+
+**Log Entry**:
+One line in the Event Log: a structured record (exact sim-second, kind, severity, typed payload such as Drone/Fire/Base ids and a position) rendered to human-readable text in the UI, not a pre-baked string in engine state (ADR-0008). The engine emits these append-only as transitions occur, so nothing is missed even when several transitions collapse into one tick at high speed.
+_Avoid_: Log line (fine informally), message, alert

@@ -13,10 +13,10 @@ import { FireFootprintLayer } from './FireFootprintLayer'
 import { FireMarkers } from './FireMarkers'
 import { FirePanel } from './FirePanel'
 import { GroundTruthToggle } from './GroundTruthToggle'
-import { MapLegend } from './MapLegend'
 import { ReturnEnvelope } from './ReturnEnvelope'
 import { UncertaintyEllipseLayer } from './UncertaintyEllipseLayer'
 import { WindIndicator } from './WindIndicator'
+import { canReturnDroneToBase } from '../engine/advanceSimulation'
 import { withDronePositions } from '../engine/liveWorld'
 import { droneTelemetryFor } from '../engine/telemetry'
 import { useSimulationClock } from '../engine/useSimulationClock'
@@ -123,14 +123,15 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
   // panel is open — mirrors `AssetPanel`'s own conditional-render pattern
   // above, and reads the same live, shrinking-over-time
   // `remainingEnduranceSimSeconds` the panel does (via `droneTelemetryFor`).
-  // Excludes a `'lost'` Drone (issue W) entirely, rather than rendering a
-  // (now-permanently-zero-budget) degenerate envelope: a Lost Drone will
-  // never return to any Base Station, so there is nothing meaningful for
-  // this overlay to show.
-  const selectedDroneIsLost =
-    selectedAsset !== null && clock.simulationState.droneActivity[selectedAsset.id]?.mode === 'lost'
+  // Excludes a terminal Drone entirely, rather than rendering a degenerate
+  // envelope: a `'lost'` Drone (issue W) will never return to any Base
+  // Station, and a `'grounded'` Drone (ADR-0007) is already parked at one and
+  // permanently out of service — so there is nothing meaningful for this
+  // overlay to show for either.
+  const selectedDroneMode = selectedAsset !== null ? clock.simulationState.droneActivity[selectedAsset.id]?.mode : undefined
+  const selectedDroneIsTerminal = selectedDroneMode === 'lost' || selectedDroneMode === 'grounded'
   const selectedDroneRemainingEnduranceSimSeconds =
-    selectedAsset && isDroneAsset(selectedAsset) && !selectedDroneIsLost
+    selectedAsset && isDroneAsset(selectedAsset) && !selectedDroneIsTerminal
       ? droneTelemetryFor(
           clock.simulationState.dronePatrol[selectedAsset.id],
           clock.simulationState.droneActivity[selectedAsset.id],
@@ -197,6 +198,9 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
           asset={selectedAsset}
           simulationState={clock.simulationState}
           drones={world.drones}
+          showReturnEnvelope={isDroneAsset(selectedAsset) && selectedDroneRemainingEnduranceSimSeconds !== undefined}
+          canReturnToBase={isDroneAsset(selectedAsset) && canReturnDroneToBase(clock.simulationState.droneActivity[selectedAsset.id])}
+          onReturnToBase={() => clock.returnDroneToNearestBase(selectedAsset.id)}
           onClose={() => setSelectedAssetId(null)}
         />
       )}
@@ -226,7 +230,6 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
         <GroundTruthToggle enabled={groundTruthViewEnabled} onChange={setGroundTruthViewEnabled} />
         <WindIndicator wind={scenario.wind} />
       </div>
-      <MapLegend />
     </MapContainer>
   )
 }

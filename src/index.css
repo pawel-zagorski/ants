@@ -279,57 +279,68 @@ body,
   border-color: #1d4ed8;
 }
 
-/* Always-visible map legend (issue: map markers & legend) — bottom-right so
-   it clears the bottom-left `.bottom-controls`. Mirrors the other floating
-   panels' white/rounded/shadowed card look. */
-.map-legend {
-  position: absolute;
-  bottom: 16px;
-  right: 16px;
-  z-index: 1000;
-  max-width: 240px;
-  padding: 8px 12px;
-  background: #ffffff;
-  border-radius: 8px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+/* Drone-only footer inside the status panel: the "Return to Nearest Base"
+   recall button (ADR-0007) and the Return Envelope legend entry (issue K).
+   The legend lives here, not in an always-on map legend, so it only shows
+   while the light-blue Return Envelope overlay it explains is actually on the
+   map (a Drone panel is open and the Drone is not terminal). */
+.asset-panel-drone-actions {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.asset-panel-return-button {
+  align-self: flex-start;
+  padding: 6px 12px;
+  font-family: system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+  background: #0369a1;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.asset-panel-return-button:hover {
+  background: #075985;
+}
+
+.asset-panel-legend {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   font-family: system-ui, sans-serif;
   font-size: 13px;
   color: #374151;
 }
 
-.map-legend-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-}
-
-/* Amber, dashed swatch matching `RETURN_ENVELOPE_PATH_OPTIONS` (#d97706,
-   dashed stroke, faint amber fill) so the legend reads as the same overlay
-   drawn on the map. */
-.map-legend-swatch {
+/* Light-blue, dashed swatch matching `RETURN_ENVELOPE_PATH_OPTIONS`
+   (#38bdf8, dashed stroke, faint light-blue fill) so the legend reads as the
+   same overlay drawn on the map. */
+.asset-panel-legend-swatch {
   flex: 0 0 auto;
   width: 22px;
   height: 16px;
   margin-top: 2px;
   border-radius: 3px;
+  border: 2px dashed #38bdf8;
+  background: rgba(56, 189, 248, 0.18);
 }
 
-.map-legend-swatch-return-envelope {
-  border: 2px dashed #d97706;
-  background: rgba(217, 119, 6, 0.18);
-}
-
-.map-legend-text {
+.asset-panel-legend-text {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
-.map-legend-label {
+.asset-panel-legend-label {
   font-weight: 700;
 }
 
-.map-legend-description {
+.asset-panel-legend-description {
   color: #6b7280;
   font-size: 12px;
   line-height: 1.35;
