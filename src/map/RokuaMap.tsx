@@ -6,6 +6,7 @@ import { AssetMarkers } from './AssetMarkers'
 import { AssetPanel } from './AssetPanel'
 import { DatalinkLines } from './DatalinkLines'
 import { EventMarkers } from './EventMarkers'
+import { EventPanel } from './EventPanel'
 import { GroundTruthToggle } from './GroundTruthToggle'
 import { ReturnEnvelope } from './ReturnEnvelope'
 import { withDronePositions } from '../engine/liveWorld'
@@ -56,10 +57,19 @@ function isDroneAsset(asset: Asset): asset is Drone {
  * by default) additionally reveals Undetected ones, faded/dashed. Every
  * Drone also always shows an animated Datalink line to its nearest Relay
  * (issue L, see `DatalinkLines`) — unlike the status panel, this layer is
- * not gated by selection.
+ * not gated by selection. Clicking a Detected, non-Fire Event (Person
+ * Sighting/Fallen Tree) instead opens `EventPanel` (issue O, ADR-0005):
+ * its Detection Status plus a "Send" button per currently-available Drone,
+ * which manually triggers that Drone's investigate behavior — auto-dispatch
+ * is retired for these two Event types (Fire dispatch is unaffected, still
+ * automatic for now — see `advanceSimulation.ts`).
  */
 export function RokuaMap({ world, scenario }: RokuaMapProps) {
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null)
+  // Mutually exclusive with `selectedAssetId` (see the two `onSelect`
+  // handlers below) — only one status/detection panel is ever open at a
+  // time, mirroring `AssetPanel`'s single-panel UX for Events too.
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
   const [groundTruthViewEnabled, setGroundTruthViewEnabled] = useState(false)
   const clock = useSimulationClock(world, scenario)
   const liveWorld = useMemo(() => withDronePositions(world, clock.simulationState), [world, clock.simulationState])
@@ -67,6 +77,7 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
   // an open panel's fields track `liveWorld`/`clock.simulationState` as
   // they change, rather than the stale snapshot from the click that opened it.
   const selectedAsset = selectedAssetId ? allAssets(liveWorld).find((asset) => asset.id === selectedAssetId) ?? null : null
+  const selectedEvent = selectedEventId ? clock.simulationState.events[selectedEventId] ?? null : null
   // The Return Envelope (issue K) is only shown while a Drone's status
   // panel is open — mirrors `AssetPanel`'s own conditional-render pattern
   // above, and reads the same live, shrinking-over-time
@@ -85,8 +96,21 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
     <MapContainer bounds={toLeafletBounds(world.bounds)} className="rokua-map">
       <TileLayer url={OSM_TILE_URL} attribution={OSM_ATTRIBUTION} />
       <DatalinkLines world={liveWorld} />
-      <AssetMarkers world={liveWorld} onSelect={(asset) => setSelectedAssetId(asset.id)} />
-      <EventMarkers events={clock.simulationState.events} groundTruthViewEnabled={groundTruthViewEnabled} />
+      <AssetMarkers
+        world={liveWorld}
+        onSelect={(asset) => {
+          setSelectedAssetId(asset.id)
+          setSelectedEventId(null)
+        }}
+      />
+      <EventMarkers
+        events={clock.simulationState.events}
+        groundTruthViewEnabled={groundTruthViewEnabled}
+        onSelect={(event) => {
+          setSelectedEventId(event.id)
+          setSelectedAssetId(null)
+        }}
+      />
       {selectedAsset && isDroneAsset(selectedAsset) && selectedDroneRemainingEnduranceSimSeconds !== undefined && (
         <ReturnEnvelope
           drone={selectedAsset}
@@ -101,6 +125,15 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
           simulationState={clock.simulationState}
           drones={world.drones}
           onClose={() => setSelectedAssetId(null)}
+        />
+      )}
+      {selectedEvent && (
+        <EventPanel
+          event={selectedEvent}
+          simulationState={clock.simulationState}
+          drones={world.drones}
+          onSend={(droneId) => clock.sendDrone(droneId, selectedEvent.id)}
+          onClose={() => setSelectedEventId(null)}
         />
       )}
       <div className="bottom-controls">

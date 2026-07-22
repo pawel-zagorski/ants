@@ -1,6 +1,6 @@
-import { render } from '@testing-library/react'
+import { fireEvent, render } from '@testing-library/react'
 import { MapContainer } from 'react-leaflet'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { EventMarkers } from './EventMarkers'
 import type { EventRuntimeState } from '../engine/types'
 
@@ -40,10 +40,14 @@ const resolvedFire: EventRuntimeState = {
   detectedAtSimSeconds: 0,
 }
 
-function renderMarkers(events: Record<string, EventRuntimeState>, groundTruthViewEnabled: boolean) {
+function renderMarkers(
+  events: Record<string, EventRuntimeState>,
+  groundTruthViewEnabled: boolean,
+  onSelect: (event: EventRuntimeState) => void = vi.fn(),
+) {
   return render(
     <MapContainer center={[64.5644, 26.4947]} zoom={9}>
-      <EventMarkers events={events} groundTruthViewEnabled={groundTruthViewEnabled} />
+      <EventMarkers events={events} groundTruthViewEnabled={groundTruthViewEnabled} onSelect={onSelect} />
     </MapContainer>,
   )
 }
@@ -89,6 +93,54 @@ describe('EventMarkers', () => {
 
     expect(document.querySelectorAll('.event-icon')).toHaveLength(1)
     expect(document.querySelector('.event-icon-fire')).not.toBeNull()
+  })
+})
+
+const detectedFallenTree: EventRuntimeState = {
+  id: 'event-5',
+  type: 'FallenTree',
+  position: { lat: 64.55, lng: 26.3 },
+  status: 'detected',
+  spawnAtSimSeconds: 0,
+  detectedByAssetId: 'drone-1',
+  detectedAtSimSeconds: 0,
+}
+
+describe('EventMarkers click handling (issue O)', () => {
+  it('reports the clicked Event via onSelect for a Detected Person Sighting/Fallen Tree', () => {
+    const onSelect = vi.fn()
+    renderMarkers({ 'event-5': detectedFallenTree }, false, onSelect)
+
+    fireEvent.click(document.querySelector('.event-icon-fallentree') as Element)
+
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith(detectedFallenTree)
+  })
+
+  it('does not call onSelect when a Detected Fire is clicked (Fire gets its own panel in a later issue)', () => {
+    const onSelect = vi.fn()
+    renderMarkers({ 'event-3': detectedFire }, false, onSelect)
+
+    fireEvent.click(document.querySelector('.event-icon-fire') as Element)
+
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it('does not call onSelect when an Undetected Event (visible only in Ground Truth View) is clicked', () => {
+    const onSelect = vi.fn()
+    renderMarkers({ 'event-2': undetectedFallenTree }, true, onSelect)
+
+    fireEvent.click(document.querySelector('.event-icon-fallentree') as Element)
+
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it('does not call onSelect when a Resolved Event is clicked', () => {
+    const onSelect = vi.fn()
+    renderMarkers({ 'event-4': resolvedFire }, false, onSelect)
+
+    fireEvent.click(document.querySelector('.event-icon-fire') as Element)
+
+    expect(onSelect).not.toHaveBeenCalled()
   })
 })
 

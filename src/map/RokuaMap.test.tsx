@@ -403,6 +403,100 @@ describe('RokuaMap Drone/Base Station telemetry panels (issue G)', () => {
   })
 })
 
+describe('RokuaMap Manual dispatch for Person Sighting/Fallen Tree (issue O)', () => {
+  // Sitting exactly at base-1 (world's Base Station position), so drone-1's
+  // Quadrocopter patrol loop (radius 250m, centered on base-1) always stays
+  // within its 500m default detection radius — guarantees Detection at
+  // elapsedSimSeconds 0 regardless of patrol angle.
+  const eventPosition = { lat: 64.5, lng: 26.25 }
+  const fallenTreeScenario: Scenario = {
+    events: [{ id: 'tree-1', type: 'FallenTree', position: eventPosition, spawnAtSimSeconds: 0 }],
+  }
+
+  it('does not auto-dispatch any Drone on Detection, and clicking the Detected marker opens a panel with Detection Status and available Drones', () => {
+    render(<RokuaMap world={world} scenario={fallenTreeScenario} />)
+
+    const marker = document.querySelector('.event-icon-fallentree')
+    expect(marker).not.toBeNull()
+    expect(marker).not.toHaveClass('event-icon-undetected')
+
+    fireEvent.click(marker as Element)
+
+    const panel = screen.getByRole('dialog')
+    expect(panel).toHaveTextContent('tree-1')
+    expect(panel).toHaveTextContent('Fallen Tree')
+    // Detected by one of the two Drones (both patrol right on top of the
+    // Event) — either is a valid, deterministic outcome of Detection.
+    expect(panel.textContent).toMatch(/drone-1|drone-2/)
+    expect(screen.getAllByRole('button', { name: 'Send' }).length).toBeGreaterThan(0)
+  })
+
+  it('leaves every Drone patrolling until "Send" is clicked — no automatic dispatch', () => {
+    render(<RokuaMap world={world} scenario={fallenTreeScenario} />)
+
+    fireEvent.click(document.querySelector('.asset-icon-quadrocopter') as Element)
+    expect(screen.getByRole('dialog')).toHaveTextContent('Patrolling')
+  })
+
+  it('starts the sent Drone investigating once "Send" is clicked, and removes it from the Event panel\'s list', () => {
+    render(<RokuaMap world={world} scenario={fallenTreeScenario} />)
+
+    fireEvent.click(document.querySelector('.event-icon-fallentree') as Element)
+    fireEvent.click(screen.getAllByRole('button', { name: 'Send' })[0])
+
+    // The Event panel closes itself neither way — re-open it to confirm the
+    // sent Drone dropped out of the now-available list.
+    fireEvent.click(document.querySelector('.event-icon-fallentree') as Element)
+    const remainingSendButtons = screen.getAllByRole('button', { name: 'Send' })
+    expect(remainingSendButtons).toHaveLength(1)
+  })
+
+  it('shows the sent Drone as Investigating tree-1 in its own status panel', () => {
+    render(<RokuaMap world={world} scenario={fallenTreeScenario} />)
+
+    fireEvent.click(document.querySelector('.event-icon-fallentree') as Element)
+    fireEvent.click(screen.getAllByRole('button', { name: 'Send' })[0])
+
+    fireEvent.click(document.querySelector('.asset-icon-quadrocopter') as Element)
+    const panel = screen.getByRole('dialog')
+    expect(panel).toHaveTextContent('Investigating')
+    expect(panel).toHaveTextContent('tree-1')
+  })
+
+  it('closes the Event panel when a different asset marker is clicked instead', () => {
+    render(<RokuaMap world={world} scenario={fallenTreeScenario} />)
+
+    fireEvent.click(document.querySelector('.event-icon-fallentree') as Element)
+    expect(screen.getByRole('dialog')).toHaveTextContent('tree-1')
+
+    fireEvent.click(document.querySelector('.asset-icon-tower') as Element)
+    expect(screen.getByRole('dialog')).not.toHaveTextContent('tree-1')
+    expect(screen.getByRole('dialog')).toHaveTextContent('tower-1')
+  })
+
+  it('closes the asset status panel when a Detected Event marker is clicked instead', () => {
+    render(<RokuaMap world={world} scenario={fallenTreeScenario} />)
+
+    fireEvent.click(document.querySelector('.asset-icon-tower') as Element)
+    expect(screen.getByRole('dialog')).toHaveTextContent('tower-1')
+
+    fireEvent.click(document.querySelector('.event-icon-fallentree') as Element)
+    expect(screen.getByRole('dialog')).not.toHaveTextContent('tower-1')
+    expect(screen.getByRole('dialog')).toHaveTextContent('tree-1')
+  })
+
+  it('does not open a panel when clicking a Fire Event (out of this issue\'s scope)', () => {
+    const fireScenario: Scenario = {
+      events: [{ id: 'fire-1', type: 'Fire', position: { lat: 64.7, lng: 26.2 }, spawnAtSimSeconds: 0 }],
+    }
+    render(<RokuaMap world={world} scenario={fireScenario} />)
+
+    fireEvent.click(document.querySelector('.event-icon-fire') as Element)
+
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+})
+
 describe('RokuaMap Return Envelope overlay (issue K)', () => {
   const base1Position = { lat: 64.5, lng: 26.25 }
   // 3500m east of base-1 — tuned against maxEnduranceSimSeconds/
