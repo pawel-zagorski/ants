@@ -22,6 +22,15 @@ Fleet mapping (kept on the *existing* `drone-1..4` ids/positions/`DroneType`s/pa
 
 Values are rough, middle-of-range estimates from the reference table (real product specs/marketing), per design guidance — precision isn't required, only plausibility.
 
+**Issues N–W** add Fire growth/spread and an operator-driven manual dispatch model (replacing automatic dispatch for every Event/Fire type), derived from a design session that deliberately reversed two lines of the original PRD's Out of Scope section (see `docs/adr/0004`–`0006` and the updated `CONTEXT.md`):
+
+- **Fire**: now its own domain concept, not an `EventType` — grows continuously across a **Fire Footprint** (50m hex cells, a local grid per Fire) via the deterministic **Growth Ellipse** model, biased downwind by a new per-Scenario **Wind**.
+- **Fire fog-of-war tiers**: Undetected → Tower-Detected (shows an **Uncertainty Ellipse** standing in for the real shape) → Investigated (shows a **Confirmed Shape**, live-updating while a Drone orbits, frozen once that Drone leaves).
+- **Manual dispatch**: `dispatch.ts`'s nearest-drone auto-selection is retired for every Event/Fire type (ADR-0005). Person Sighting/Fallen Tree get a simple available-Drones list; Fire gets a **Bingo Range** (safe round-trip) vs. **One-Way Mission** (Drone will be **Lost**) split, reusing the Return Envelope's distance/speed math as a real dispatch-eligibility gate for the first time (ADR-0006).
+- **Scenario Epoch**: a new `startDateTimeIso` field on Scenario; every timestamp shown in the UI becomes a calendar date/time instead of raw `elapsedSimSeconds`.
+
+Issues N, O, P, and Q have no blockers and are independent of each other — developed in parallel, each in its own `.worktrees/` checkout per issue, on its own branch, merged back individually. R onward form a stricter chain (R needs P+Q; S needs Q+R; T needs Q+N; U needs T; V needs U+R; W needs U+V).
+
 Status legend: `[ ]` not started, `[~]` in progress, `[x]` done.
 
 ---
@@ -329,3 +338,236 @@ Using issue I's `datalinkRangeMeters` and issue L's nearest-Relay Datalink line:
 ### Blocked by
 
 L
+
+---
+
+## [ ] N — Scenario Epoch: calendar date/time schema + display
+
+### Parent
+
+Design session on Fire spread and manual dispatch (see the note above the status legend and updated `CONTEXT.md`).
+
+### What to build
+
+Add `startDateTimeIso` (an ISO 8601 string) to the scenario schema (`src/scenario/types.ts`, `src/scenario/schema.ts`) — the real calendar date/time that `elapsedSimSeconds = 0` corresponds to for that Scenario. Add a small helper (e.g. `src/engine/scenarioEpoch.ts`) that converts `(startDateTimeIso, elapsedSimSeconds) -> Date` and a display-formatted string. Update the Simulation Clock panel (`SimulationClockPanel.tsx`) to show the current calendar date/time (epoch + elapsed) instead of raw elapsed seconds. Give all three bundled scenarios a plausible `startDateTimeIso`.
+
+### Acceptance criteria
+
+- [ ] Scenario schema requires `startDateTimeIso`; validation rejects a scenario missing it or with an unparseable value
+- [ ] A helper function converts epoch + `elapsedSimSeconds` to a calendar `Date`/formatted string; unit-tested for a few known offsets (0s, and a large offset crossing into the next day)
+- [ ] Simulation Clock panel shows the current calendar date/time, live-updating as the clock runs
+- [ ] All three bundled scenarios have a `startDateTimeIso`
+- [ ] Existing tests (`bundledScenarios.integration.test.ts`, scenario schema tests) updated and passing
+
+### Blocked by
+
+None — can start immediately.
+
+---
+
+## [ ] O — Manual dispatch for Person Sighting/Fallen Tree; retire auto-dispatch
+
+### Parent
+
+Design session on Fire spread and manual dispatch.
+
+### What to build
+
+Per ADR-0005, remove `dispatch.ts`'s nearest-available-Drone auto-selection trigger on a new Detection for Person Sighting and Fallen Tree Events — Detection itself is unchanged, only the automatic dispatch side-effect is removed. Add click handling to `EventMarkers.tsx` (currently none) and a new `EventPanel` component (mirroring `AssetPanel`'s open/close pattern) that opens when a Detected Event is clicked, showing basic Detection Status (which asset detected it, when) plus a simple list of currently-available (non-investigating) Drones with a "Send" button per Drone. Sending a Drone applies the same investigate transition `dispatch.ts` already has (Quadrocopter hovers, Fixed-Wing circles, fixed duration, then returns to patrol) — only the trigger changes from automatic to an explicit user action threaded into `advanceSimulation`.
+
+### Acceptance criteria
+
+- [ ] A new Detection no longer auto-dispatches any Drone (existing auto-dispatch tests updated to assert no automatic transition)
+- [ ] Clicking a Detected Person Sighting/Fallen Tree opens a panel showing detection source/time and a list of available Drones
+- [ ] Clicking "Send" on a listed Drone starts that Drone's existing hover/circle investigate behavior, unchanged from before
+- [ ] A Drone already investigating/unavailable does not appear in the list
+- [ ] Unit tests cover: no auto-dispatch on Detection, manual send triggers the correct investigate mode per Drone type, investigate-then-return-to-patrol timing unchanged
+
+### Blocked by
+
+None — can start immediately.
+
+---
+
+## [ ] P — Wind: scenario schema field + map compass indicator
+
+### Parent
+
+Design session on Fire spread and manual dispatch.
+
+### What to build
+
+Add a `wind: { directionDegrees: number; speedMetersPerSecond: number }` field to the scenario schema (`src/scenario/types.ts`, `src/scenario/schema.ts`) — fixed for the whole Scenario, hand-authored, never randomized or time-varying (ADR-0003). Render a small compass/arrow indicator on the map (similar UI weight to the Ground Truth toggle) showing the loaded Scenario's wind direction and speed once a Scenario is loaded. Give all three bundled scenarios a plausible `wind` value.
+
+### Acceptance criteria
+
+- [ ] Scenario schema requires `wind`; validation rejects a missing/malformed value
+- [ ] A wind indicator renders on the map once a Scenario is loaded, pointing in the scenario's wind direction with its speed labeled
+- [ ] All three bundled scenarios have a `wind` value
+- [ ] Unit tests cover schema validation for `wind`
+
+### Blocked by
+
+None — can start immediately.
+
+---
+
+## [ ] Q — Fire becomes its own domain concept
+
+### Parent
+
+Design session on Fire spread and manual dispatch.
+
+### What to build
+
+Per ADR-0004, split Fire out of the `EventType` union. Introduce a distinct `Fire`/`FireRuntimeState` type in `src/engine/types.ts` (separate from `EventRuntimeState`), with its own tier field (`'undetected' | 'towerDetected' | 'investigated'` — no `'resolved'`; Fires never auto-resolve). Update the scenario schema so a Fire ignition entry (`{ type: 'Fire', position, spawnAtSimSeconds }`, no `durationSimSeconds`) is validated/parsed distinctly from a Person Sighting/Fallen Tree `Event` entry, even though both live in the same timed list. Update `advanceSimulation.ts`'s spawn/detect logic to produce `SimulationState.fires` (a new sibling map to `events`) instead of folding Fire into `events`. Tower detection logic for Fire moves onto this new Fire-specific path — behavior unchanged for now (Fire still renders as a single marker at its ignition point; no spread/ellipse yet, that's issue R). Update `EventMarkers`/`eventIcons` so Fire rendering is driven by `SimulationState.fires`. The existing "Wildfire Outbreak" scenario/tests must continue to pass with unchanged behavior.
+
+### Acceptance criteria
+
+- [ ] `Fire` is no longer part of the `EventType` union; `SimulationState.fires` is a new, separate map from `SimulationState.events`
+- [ ] Scenario schema validates a Fire ignition entry distinctly (no `durationSimSeconds` accepted/required) while still living in the same timed list as Events
+- [ ] Tower detection of a Fire still works exactly as before (existing detection tests pass, adapted to read from `fires` instead of `events`)
+- [ ] Fire still renders as a marker on the map, in the same visual position/behavior as before this slice (no visible regression)
+- [ ] `bundledScenarios.integration.test.ts` passes with the "Wildfire Outbreak" scenario producing the same Tower-Detection outcome as before
+
+### Blocked by
+
+None — can start immediately.
+
+---
+
+## [ ] R — Fire spreads: Growth Ellipse hex-grid Fire Footprint
+
+### Parent
+
+Design session on Fire spread and manual dispatch.
+
+### What to build
+
+Implement the deterministic Growth Ellipse model: given a Fire's ignition point, elapsed time since ignition, and the Scenario's Wind (issue P), compute the Fire Footprint as a set of 50m hex cells in a local axial coordinate grid centered on the ignition point (issue Q's `Fire` type). Growth is fastest at the downwind head, slowest at the upwind back, intermediate on the flanks; head rate of spread ≈ 0.1× wind speed (m/s); zero-wind Fires grow uniformly at the (slow) back rate. A hex cell joins the footprint once the analytic ellipse covers its centroid. Render the real Fire Footprint as a hex-tile polygon layer in Ground Truth View only — the default view is unaffected by this slice (issue S handles the default view).
+
+### Acceptance criteria
+
+- [ ] Pure function computing a Fire's Fire Footprint (set of hex cell coordinates) given ignition point, elapsed time, and wind — unit-tested for: no wind (circular growth), strong wind (elongated downwind), and determinism (same inputs twice → byte-identical cell sets)
+- [ ] Ground Truth View renders a growing hex-tile shape for each Fire, visibly elongating downwind as wind speed increases
+- [ ] A Fire ignited early in a ~30–45 simulated-minute scenario grows to a visible multi-hundred-meter footprint by the end (sanity-checked manually or via a test asserting cell count grows over time)
+- [ ] Default (non-Ground-Truth) view shows no change from before this slice
+
+### Blocked by
+
+P, Q
+
+---
+
+## [ ] S — Uncertainty Ellipse in default view for Tower-Detected Fire
+
+### Parent
+
+Design session on Fire spread and manual dispatch.
+
+### What to build
+
+Once a Fire is Tower-Detected (issue Q), compute and render an Uncertainty Ellipse in the default (fog-of-war) view in place of the real Fire Footprint: size driven by (a) the detecting Tower's distance to the Fire (further = larger/blurrier) and (b) elapsed simulated time since Detection (grows further the longer it goes un-Investigated). Reuse the ellipse-sampling geometry already in `src/map/geo.ts` (built for the Return Envelope) rather than writing new ellipse math. The real Fire Footprint (issue R) stays hidden in the default view at this tier; Ground Truth View is unaffected (already shows the real footprint per issue R).
+
+### Acceptance criteria
+
+- [ ] A Tower-Detected, not-yet-Investigated Fire shows an ellipse (not the real hex footprint, not a plain marker) in the default view
+- [ ] Ellipse size increases with detecting-Tower distance, all else equal (unit test with two fixture Towers at different distances)
+- [ ] Ellipse size increases with elapsed time since Detection, all else equal (unit test at two different elapsed times)
+- [ ] Ground Truth View continues to show the real Fire Footprint unaffected by this slice
+
+### Blocked by
+
+Q, R
+
+---
+
+## [ ] T — Fire clickable: Detection Status panel (read-only)
+
+### Parent
+
+Design session on Fire spread and manual dispatch.
+
+### What to build
+
+Add click handling for Fires (mirroring issue O's Event click pattern) opening a new `FirePanel` component. Shows Detection Status: which Tower detected it and when (using issue N's Scenario Epoch to show a calendar date/time, not raw seconds), and its current tier (Tower-Detected vs. Investigated). No dispatch UI yet (issue U).
+
+### Acceptance criteria
+
+- [ ] Clicking a Fire (marker, Uncertainty Ellipse, or Fire Footprint hex shape) opens a panel
+- [ ] Panel shows the detecting Tower's id and a calendar date/time (via Scenario Epoch), and current tier
+- [ ] Panel closes the same way other status panels do (close button / selecting something else)
+- [ ] Component test covers panel content for a Tower-Detected Fire fixture
+
+### Blocked by
+
+Q, N
+
+---
+
+## [ ] U — Fire manual dispatch: Bingo Range / One-Way Mission lists + send
+
+### Parent
+
+Design session on Fire spread and manual dispatch.
+
+### What to build
+
+Per ADR-0006, add a Bingo Range calculation reusing the Return Envelope's distance/speed math (`src/map/geo.ts`): for a given Fire and Drone, compute whether the Drone's `remainingEnduranceSimSeconds` covers (distance to Fire + one orbit lap of its current extent + distance from Fire to nearest Base Station), converted via `cruiseSpeedMetersPerSecond`. Classify every non-Lost, non-investigating Drone into: Bingo Range (round-trip safe), One-Way Mission (can reach the Fire but not return), or unreachable (excluded from the list entirely). Extend issue T's `FirePanel` with two labeled lists and a "Send" action per Drone; sending assigns the Drone to the Fire, distinguishing one-way from round-trip so issues V/W know which ending behavior applies.
+
+### Acceptance criteria
+
+- [ ] Given a Fire position and a set of fixture Drones with varying `remainingEnduranceSimSeconds`/positions, classification unit tests cover: clearly Bingo-Range-safe, clearly one-way-only, and clearly unreachable
+- [ ] `FirePanel` shows two separate lists (Bingo Range, One-Way Mission) with a Send button per Drone; unreachable Drones don't appear in either
+- [ ] Sending a Drone from either list assigns it to the Fire and removes it from patrol availability
+- [ ] A Drone already Lost, investigating, or en route to another Fire/Event never appears in either list
+
+### Blocked by
+
+T
+
+---
+
+## [ ] V — Drone investigates Fire: orbit, live Confirmed Shape, one-lap completion
+
+### Parent
+
+Design session on Fire spread and manual dispatch.
+
+### What to build
+
+A Drone dispatched to a Fire (issue U) flies to it, then both Drone types orbit its current extent (radius scaled to the Fire's Uncertainty Ellipse/Fire Footprint bounding size) instead of hovering/fixed-radius-circling. While a Drone is actively orbiting, compute and render a live Confirmed Shape in the default view, tracking the real Fire Footprint (issue R) every tick. A Bingo-Range Drone completes exactly one full orbit lap (circumference at patrol speed), then the Confirmed Shape freezes as a stale snapshot and the Drone automatically returns to patrol. (One-Way Mission drones' ending behavior is issue W.)
+
+### Acceptance criteria
+
+- [ ] An investigating Drone (either type) orbits the Fire's current extent rather than hovering/fixed-150m-circling
+- [ ] While orbiting, the default view's Confirmed Shape updates every tick to match the live Fire Footprint
+- [ ] After one full orbit lap, a Bingo-Range Drone's Confirmed Shape freezes (stops updating) and the Drone returns to its normal patrol loop
+- [ ] Unit tests cover: orbit radius scales with Fire extent, one-lap completion timing (circumference / patrol speed), and the freeze-on-departure behavior
+
+### Blocked by
+
+U, R
+
+---
+
+## [ ] W — One-Way Mission execution + terminal Lost drone state
+
+### Parent
+
+Design session on Fire spread and manual dispatch.
+
+### What to build
+
+A Drone dispatched on a One-Way Mission (issue U) orbits and maps (issue V's orbit/Confirmed-Shape behavior) for as long as its `remainingEnduranceSimSeconds` lasts. The instant that hits zero, it transitions to a new terminal `Lost` Drone state: frozen in place, rendered distinctly (e.g. greyed out), and permanently excluded from all future dispatch lists (issue O's simple list and issue U's Bingo Range/One-Way lists) and from the Return Envelope/Datalink overlays.
+
+### Acceptance criteria
+
+- [ ] A One-Way Mission Drone continues orbiting/mapping (reusing issue V's behavior) rather than stopping immediately on dispatch
+- [ ] The instant `remainingEnduranceSimSeconds` reaches zero, the Drone transitions to `Lost` and stops moving, wherever it currently is
+- [ ] A `Lost` Drone renders visually distinct from all other states and never appears in any dispatch list again
+- [ ] Unit tests cover the exact transition timing (Lost occurs precisely when endurance hits zero, not before/after) and that a Lost Drone's Confirmed Shape contribution freezes at that same moment
+
+### Blocked by
+
+U, V
