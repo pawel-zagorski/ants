@@ -41,6 +41,21 @@ function trackedFireFor(towerId: string, fires: Record<string, FireRuntimeState>
 }
 
 /**
+ * The banner photo an asset's card shows: its `src` (a public-asset path,
+ * resolved through {@link withBase} at render), `alt`, and whether it uses
+ * the `.asset-panel-photo--margin` variant. A Drone shows its own real-world
+ * product shot framed with a white margin (object-fit: contain), since the
+ * fleet photos are differently-shaped and shouldn't be cropped; a Tower or
+ * Base Station shows a shared, full-bleed stock photo (object-fit: cover),
+ * matching how Fire/Person Sighting/Fallen Tree cards look in their panels.
+ */
+function assetPhotoFor(asset: Asset, isDrone: boolean): { src: string; alt: string; margin: boolean } {
+  if (isDrone) return { src: (asset as Drone).imageUrl, alt: (asset as Drone).model, margin: true }
+  if (asset.type === 'Tower') return { src: '/img/tower.jpeg', alt: 'Monitoring Tower', margin: false }
+  return { src: '/img/base.jpeg', alt: 'Base Station', margin: false }
+}
+
+/**
  * Status panel opened by clicking an asset marker: basic identity fields
  * (id, type, position) for every asset kind, plus per-kind rich telemetry
  * (PRD "Asset status panels" Implementation Decision) — a Tower's
@@ -76,9 +91,15 @@ export function AssetPanel({ asset, simulationState, drones, onClose }: AssetPan
 
   const baseStationCounts = asset.type === 'BaseStation' ? baseStationCountsFor(asset.id, drones, droneActivity) : undefined
 
+  const photo = assetPhotoFor(asset, isDrone)
+
   return (
     <div className="asset-panel" role="dialog" aria-label={`${typeLabel} ${asset.id} status`}>
-      {isDrone && <img className="asset-panel-photo" src={withBase((asset as Drone).imageUrl)} alt={(asset as Drone).model} />}
+      <img
+        className={photo.margin ? 'asset-panel-photo asset-panel-photo--margin' : 'asset-panel-photo'}
+        src={withBase(photo.src)}
+        alt={photo.alt}
+      />
       <button type="button" className="asset-panel-close" onClick={onClose} aria-label="Close">
         &times;
       </button>

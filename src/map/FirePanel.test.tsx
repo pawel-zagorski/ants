@@ -128,6 +128,25 @@ describe('FirePanel', () => {
 
     expect(onClose).toHaveBeenCalledOnce()
   })
+
+  it('shows a full-bleed (no-margin) wildfire photo', () => {
+    render(
+      <FirePanel
+        fire={towerDetectedFire}
+        simulationState={simulationStateFixture()}
+        drones={[]}
+        baseStations={[]}
+        wind={windFixture}
+        onSend={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+
+    const photo = screen.getByRole('img', { name: 'Wildfire' })
+    expect(photo).toHaveAttribute('src', '/img/wildfire.jpeg')
+    expect(photo).toHaveClass('asset-panel-photo')
+    expect(photo).not.toHaveClass('asset-panel-photo--margin')
+  })
 })
 
 describe('FirePanel Bingo Range / One-Way Mission lists (issue U)', () => {

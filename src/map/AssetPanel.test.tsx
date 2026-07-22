@@ -255,6 +255,7 @@ describe('AssetPanel Drone photo + Model/Payload (issue J)', () => {
 
     const photo = screen.getByRole('img', { name: 'DJI Mavic 4 Pro' })
     expect(photo).toHaveAttribute('src', '/img/dji_mavic_4_pro.jpeg')
+    expect(photo).toHaveClass('asset-panel-photo', 'asset-panel-photo--margin')
     expect(screen.getByText('Model')).toBeInTheDocument()
     expect(screen.getByText('DJI Mavic 4 Pro')).toBeInTheDocument()
     expect(screen.getByText('Payload')).toBeInTheDocument()
@@ -272,18 +273,24 @@ describe('AssetPanel Drone photo + Model/Payload (issue J)', () => {
     expect(screen.getByText('Thermal')).toBeInTheDocument()
   })
 
-  it('does not show a photo or Model/Payload rows for a Tower', () => {
+  it('shows a full-bleed (no-margin) Tower photo, but no Model/Payload rows', () => {
     render(<AssetPanel asset={tower} simulationState={simulationStateFixture()} drones={[]} onClose={vi.fn()} />)
 
-    expect(screen.queryByRole('img')).toBeNull()
+    const photo = screen.getByRole('img', { name: 'Monitoring Tower' })
+    expect(photo).toHaveAttribute('src', '/img/tower.jpeg')
+    expect(photo).toHaveClass('asset-panel-photo')
+    expect(photo).not.toHaveClass('asset-panel-photo--margin')
     expect(screen.queryByText('Model')).toBeNull()
     expect(screen.queryByText('Payload')).toBeNull()
   })
 
-  it('does not show a photo or Model/Payload rows for a Base Station', () => {
+  it('shows a full-bleed (no-margin) Base Station photo, but no Model/Payload rows', () => {
     render(<AssetPanel asset={baseStation} simulationState={simulationStateFixture()} drones={[]} onClose={vi.fn()} />)
 
-    expect(screen.queryByRole('img')).toBeNull()
+    const photo = screen.getByRole('img', { name: 'Base Station' })
+    expect(photo).toHaveAttribute('src', '/img/base.jpeg')
+    expect(photo).toHaveClass('asset-panel-photo')
+    expect(photo).not.toHaveClass('asset-panel-photo--margin')
     expect(screen.queryByText('Model')).toBeNull()
     expect(screen.queryByText('Payload')).toBeNull()
   })

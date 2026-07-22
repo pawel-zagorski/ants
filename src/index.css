@@ -70,10 +70,11 @@ body,
   font-family: system-ui, sans-serif;
 }
 
-/* Drone identity photo (issue J) — bleeds into the panel's own padding so
-   it spans the full card width flush with its rounded top corners; a fixed
-   height + object-fit: cover crops the 3 differently-shaped source photos
-   (portrait Mavic/Matrice vs. landscape FlyEye) into a consistent banner. */
+/* Card photo banner — bleeds into the panel's own padding so it spans the
+   full card width flush with its rounded top corners; a fixed height +
+   object-fit: cover crops each source photo into a consistent full-bleed
+   banner. Used by every clickable item's panel (Fire, Tower, Base Station,
+   Person Sighting, Fallen Tree). */
 .asset-panel-photo {
   display: block;
   width: calc(100% + 32px);
@@ -81,6 +82,19 @@ body,
   margin: -16px -16px 12px -16px;
   object-fit: cover;
   border-radius: 8px 8px 0 0;
+}
+
+/* Drone variant (issue J): the 3 differently-shaped drone source photos
+   (portrait Mavic/Matrice vs. landscape FlyEye) must show in full rather
+   than being cropped, so this shows the whole image (object-fit: contain)
+   on a white background with a ~5% inset on all sides — a white border
+   framing the product shot. box-sizing keeps the padding inside the same
+   banner footprint as the full-bleed variant above. */
+.asset-panel-photo--margin {
+  padding: 5%;
+  background: #ffffff;
+  object-fit: contain;
+  box-sizing: border-box;
 }
 
 .asset-panel-close {
