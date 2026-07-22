@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { squareViewportBounds, toLeafletBounds } from './geo'
+import { offsetLatLng, squareViewportBounds, toLeafletBounds } from './geo'
+import { haversineDistanceMeters } from '../test/haversineDistanceMeters'
 
 describe('squareViewportBounds', () => {
   it('returns a bounding box whose sides span the requested distance', () => {
@@ -27,6 +28,39 @@ describe('squareViewportBounds', () => {
 
     expect((bounds.southWest.lat + bounds.northEast.lat) / 2).toBeCloseTo(center.lat, 10)
     expect((bounds.southWest.lng + bounds.northEast.lng) / 2).toBeCloseTo(center.lng, 10)
+  })
+})
+
+describe('offsetLatLng', () => {
+  it('moves the point north by dyMeters when dxMeters is 0', () => {
+    const origin = { lat: 64.5, lng: 26.25 }
+
+    const moved = offsetLatLng(origin, 0, 1000)
+
+    expect(moved.lng).toBeCloseTo(origin.lng, 6)
+    expect(moved.lat).toBeGreaterThan(origin.lat)
+    expect(haversineDistanceMeters(origin, moved)).toBeCloseTo(1000, -1)
+  })
+
+  it('moves the point east by dxMeters when dyMeters is 0, correcting for longitude convergence', () => {
+    const origin = { lat: 64.5, lng: 26.25 }
+
+    const moved = offsetLatLng(origin, 1000, 0)
+
+    expect(moved.lat).toBeCloseTo(origin.lat, 6)
+    expect(moved.lng).toBeGreaterThan(origin.lng)
+    expect(haversineDistanceMeters(origin, moved)).toBeCloseTo(1000, -1)
+  })
+
+  it('produces a point whose distance from origin matches the requested displacement magnitude', () => {
+    const origin = { lat: 64.5, lng: 26.25 }
+    const dxMeters = 300
+    const dyMeters = 400
+
+    const moved = offsetLatLng(origin, dxMeters, dyMeters)
+
+    // 3-4-5 triangle: sqrt(300^2 + 400^2) = 500
+    expect(haversineDistanceMeters(origin, moved)).toBeCloseTo(500, -1)
   })
 })
 

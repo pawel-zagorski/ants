@@ -51,7 +51,7 @@ A
 
 ---
 
-## [ ] C — Simulation Clock + patrol movement engine
+## [x] C — Simulation Clock + patrol movement engine
 
 ### What to build
 
@@ -59,11 +59,11 @@ Implement the pure simulation engine function described in the PRD: `advanceSimu
 
 ### Acceptance criteria
 
-- [ ] `advanceSimulation` is a pure function (same inputs → same outputs, no side effects), unit-tested in isolation with no rendering/browser dependency
-- [ ] Quadrocopters visibly patrol a tight loop near their Base Station when the clock is running
-- [ ] Fixed-Wing Drones visibly patrol a long perimeter loop at a visibly higher speed than Quadrocopters
-- [ ] Clock UI supports play, pause, at least two speed multipliers, and single-step-while-paused
-- [ ] Running the same World for the same elapsed simulated time twice produces identical Drone positions (determinism test)
+- [x] `advanceSimulation` is a pure function (same inputs → same outputs, no side effects), unit-tested in isolation with no rendering/browser dependency
+- [x] Quadrocopters visibly patrol a tight loop near their Base Station when the clock is running
+- [x] Fixed-Wing Drones visibly patrol a long perimeter loop at a visibly higher speed than Quadrocopters
+- [x] Clock UI supports play, pause, at least two speed multipliers, and single-step-while-paused
+- [x] Running the same World for the same elapsed simulated time twice produces identical Drone positions (determinism test)
 
 ### Blocked by
 

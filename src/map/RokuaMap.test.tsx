@@ -39,14 +39,25 @@ describe('RokuaMap', () => {
   it('opens a status panel with id/type/position when a marker is clicked', () => {
     render(<RokuaMap world={world} />)
 
-    const droneMarker = document.querySelector('.asset-icon-quadrocopter')
-    expect(droneMarker).not.toBeNull()
-    fireEvent.click(droneMarker as Element)
+    const towerMarker = document.querySelector('.asset-icon-tower')
+    expect(towerMarker).not.toBeNull()
+    fireEvent.click(towerMarker as Element)
+
+    const panel = screen.getByRole('dialog')
+    expect(panel).toHaveTextContent('tower-1')
+    expect(panel).toHaveTextContent('Tower')
+    expect(panel).toHaveTextContent('64.7000, 26.2000')
+  })
+
+  it("shows a Drone's current patrol position (not its static world.json position) in the panel", () => {
+    render(<RokuaMap world={world} />)
+
+    fireEvent.click(document.querySelector('.asset-icon-quadrocopter') as Element)
 
     const panel = screen.getByRole('dialog')
     expect(panel).toHaveTextContent('drone-1')
-    expect(panel).toHaveTextContent('Quadrocopter')
-    expect(panel).toHaveTextContent('64.5020, 26.2520')
+    // Patrolling near its home Base Station (64.5, 26.25), not its raw world.json position.
+    expect(panel).toHaveTextContent(/-?\d+\.\d{4}, -?\d+\.\d{4}/)
   })
 
   it('displays Base Station and Fixed-Wing Drone using their exact CONTEXT.md vocabulary', () => {
@@ -77,5 +88,39 @@ describe('RokuaMap', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
 
     expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('renders the Simulation Clock with Play, Step, and speed multiplier controls, starting paused', () => {
+    render(<RokuaMap world={world} />)
+
+    expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Pause' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Step' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: '1x' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '10x' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '60x' })).toBeInTheDocument()
+  })
+
+  it('switches to Pause and disables Step once Play is pressed', () => {
+    render(<RokuaMap world={world} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Play' }))
+
+    expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Play' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Step' })).toBeDisabled()
+  })
+
+  it('moves a Quadrocopter to a new patrol position when stepping the Simulation Clock forward while paused', () => {
+    render(<RokuaMap world={world} />)
+
+    fireEvent.click(document.querySelector('.asset-icon-quadrocopter') as Element)
+    const positionBefore = screen.getByRole('dialog').textContent
+
+    fireEvent.click(screen.getByRole('button', { name: 'Step' }))
+    fireEvent.click(document.querySelector('.asset-icon-quadrocopter') as Element)
+    const positionAfter = screen.getByRole('dialog').textContent
+
+    expect(positionAfter).not.toEqual(positionBefore)
   })
 })

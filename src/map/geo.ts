@@ -31,6 +31,21 @@ export function squareViewportBounds(center: LatLng, sideKm: number): LatLngBoun
   }
 }
 
+/**
+ * Displaces `origin` by `dxMeters` east and `dyMeters` north and returns the
+ * resulting point. Uses the same flat-earth approximation as
+ * {@link squareViewportBounds} (no ellipsoid/geodesic math), which is
+ * accurate enough for patrol-loop-sized displacements (hundreds to low
+ * thousands of meters) at this prototype's scale.
+ */
+export function offsetLatLng(origin: LatLng, dxMeters: number, dyMeters: number): LatLng {
+  const latOffset = dyMeters / 1000 / KM_PER_DEGREE_LATITUDE
+  const kmPerDegreeLongitude = KM_PER_DEGREE_LATITUDE * Math.cos((origin.lat * Math.PI) / 180)
+  const lngOffset = dxMeters / 1000 / kmPerDegreeLongitude
+
+  return { lat: origin.lat + latOffset, lng: origin.lng + lngOffset }
+}
+
 /** Reshapes a `LatLngBounds` into the `[lat, lng]` corner tuples react-leaflet expects. */
 export function toLeafletBounds(bounds: LatLngBounds): [[number, number], [number, number]] {
   return [

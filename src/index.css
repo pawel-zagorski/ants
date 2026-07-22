@@ -111,3 +111,51 @@ body,
   color: #b91c1c;
   white-space: pre-wrap;
 }
+
+/* Simulation Clock UI (issue C) — play/pause/speed/step controls. */
+.simulation-clock-panel {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  font-family: system-ui, sans-serif;
+  font-size: 13px;
+}
+
+.simulation-clock-time {
+  font-variant-numeric: tabular-nums;
+  color: #374151;
+  min-width: 62px;
+}
+
+.simulation-clock-panel button {
+  cursor: pointer;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #f9fafb;
+  padding: 4px 8px;
+  font-size: 13px;
+}
+
+.simulation-clock-panel button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.simulation-clock-speeds {
+  display: flex;
+  gap: 4px;
+}
+
+.simulation-clock-speed-active {
+  background: #1d4ed8;
+  color: #ffffff;
+  border-color: #1d4ed8;
+}
