@@ -209,6 +209,48 @@ describe('AssetPanel Drone telemetry (issue G)', () => {
   })
 })
 
+describe('AssetPanel Drone photo + Model/Payload (issue J)', () => {
+  it("shows the Drone's own photo and its Model/Payload rows", () => {
+    const mavic: Drone = { ...drone, model: 'DJI Mavic 4 Pro', payload: 'Optical', imageUrl: '/img/dji_mavic_4_pro.jpeg' }
+
+    render(<AssetPanel asset={mavic} simulationState={simulationStateFixture()} drones={[mavic]} onClose={vi.fn()} />)
+
+    const photo = screen.getByRole('img', { name: 'DJI Mavic 4 Pro' })
+    expect(photo).toHaveAttribute('src', '/img/dji_mavic_4_pro.jpeg')
+    expect(screen.getByText('Model')).toBeInTheDocument()
+    expect(screen.getByText('DJI Mavic 4 Pro')).toBeInTheDocument()
+    expect(screen.getByText('Payload')).toBeInTheDocument()
+    expect(screen.getByText('Optical')).toBeInTheDocument()
+  })
+
+  it("shows a different Drone's own distinct photo and Model/Payload rows", () => {
+    const matrice: Drone = { ...fixedWingDrone, model: 'DJI Matrice 4T', payload: 'Thermal', imageUrl: '/img/dji_matrice_4t.webp' }
+
+    render(<AssetPanel asset={matrice} simulationState={simulationStateFixture()} drones={[matrice]} onClose={vi.fn()} />)
+
+    const photo = screen.getByRole('img', { name: 'DJI Matrice 4T' })
+    expect(photo).toHaveAttribute('src', '/img/dji_matrice_4t.webp')
+    expect(screen.getByText('DJI Matrice 4T')).toBeInTheDocument()
+    expect(screen.getByText('Thermal')).toBeInTheDocument()
+  })
+
+  it('does not show a photo or Model/Payload rows for a Tower', () => {
+    render(<AssetPanel asset={tower} simulationState={simulationStateFixture()} drones={[]} onClose={vi.fn()} />)
+
+    expect(screen.queryByRole('img')).toBeNull()
+    expect(screen.queryByText('Model')).toBeNull()
+    expect(screen.queryByText('Payload')).toBeNull()
+  })
+
+  it('does not show a photo or Model/Payload rows for a Base Station', () => {
+    render(<AssetPanel asset={baseStation} simulationState={simulationStateFixture()} drones={[]} onClose={vi.fn()} />)
+
+    expect(screen.queryByRole('img')).toBeNull()
+    expect(screen.queryByText('Model')).toBeNull()
+    expect(screen.queryByText('Payload')).toBeNull()
+  })
+})
+
 describe('AssetPanel Base Station telemetry (issue G)', () => {
   it('shows docked vs. deployed Drone counts and Operational status', () => {
     const simulationState = simulationStateFixture({

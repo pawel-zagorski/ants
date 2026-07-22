@@ -43,7 +43,11 @@ function trackedFireEventFor(towerId: string, events: Record<string, EventRuntim
  * (PRD "Asset status panels" Implementation Decision) — a Tower's
  * currently-tracked Fire Event (issue E); a Drone's full state/battery/
  * speed/heading/assigned-Event/endurance telemetry and a Base Station's
- * docked/deployed Drone counts and operational status (issue G). Callers
+ * docked/deployed Drone counts and operational status (issue G). A Drone's
+ * card additionally shows its `imageUrl` photo and its `model`/`payload`
+ * identity fields (issue I), read straight off the `Drone` object rather
+ * than `droneTelemetryFor` since they're static identity, not simulation
+ * telemetry (issue J). Callers
  * are responsible for passing a fresh `simulationState` on every render
  * (see `RokuaMap`) — that's what makes the Drone/Base Station fields
  * "live-update while the clock runs" rather than freezing at whatever they
@@ -66,6 +70,7 @@ export function AssetPanel({ asset, simulationState, drones, onClose }: AssetPan
 
   return (
     <div className="asset-panel" role="dialog" aria-label={`${typeLabel} ${asset.id} status`}>
+      {isDrone && <img className="asset-panel-photo" src={(asset as Drone).imageUrl} alt={(asset as Drone).model} />}
       <button type="button" className="asset-panel-close" onClick={onClose} aria-label="Close">
         &times;
       </button>
@@ -77,6 +82,14 @@ export function AssetPanel({ asset, simulationState, drones, onClose }: AssetPan
         <dd>
           {asset.position.lat.toFixed(4)}, {asset.position.lng.toFixed(4)}
         </dd>
+        {isDrone && (
+          <>
+            <dt>Model</dt>
+            <dd>{(asset as Drone).model}</dd>
+            <dt>Payload</dt>
+            <dd>{(asset as Drone).payload}</dd>
+          </>
+        )}
         {asset.type === 'Tower' && (
           <>
             <dt>Tracking</dt>

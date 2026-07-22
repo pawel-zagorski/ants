@@ -61,6 +61,19 @@ body,
   font-family: system-ui, sans-serif;
 }
 
+/* Drone identity photo (issue J) — bleeds into the panel's own padding so
+   it spans the full card width flush with its rounded top corners; a fixed
+   height + object-fit: cover crops the 3 differently-shaped source photos
+   (portrait Mavic/Matrice vs. landscape FlyEye) into a consistent banner. */
+.asset-panel-photo {
+  display: block;
+  width: calc(100% + 32px);
+  height: 120px;
+  margin: -16px -16px 12px -16px;
+  object-fit: cover;
+  border-radius: 8px 8px 0 0;
+}
+
 .asset-panel-close {
   position: absolute;
   top: 8px;
