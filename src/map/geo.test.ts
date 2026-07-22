@@ -3,6 +3,7 @@ import {
   distanceMetersBetween,
   offsetLatLng,
   pointOnCircle,
+  returnEnvelopeEllipseRing,
   squareViewportBounds,
   tangentialHeadingDegrees,
   tangentialSpeedMetersPerSecond,
@@ -159,6 +160,110 @@ describe('tangentialHeadingDegrees', () => {
       expect(heading).toBeGreaterThanOrEqual(0)
       expect(heading).toBeLessThan(360)
     }
+  })
+})
+
+describe('returnEnvelopeEllipseRing', () => {
+  // Foci 800m apart, aligned due east so the rotation is 0 and expected
+  // extents can be checked directly along the east/north axes.
+  const focus1 = { lat: 64.5, lng: 26.25 }
+  const focus2 = offsetLatLng(focus1, 800, 0)
+  const focalDistanceMeters = 800 // c*2
+  const focalSeparationMeters = focalDistanceMeters / 2 // c = 400
+
+  it('rejects a budget smaller than the focal distance (a < c) by returning undefined, not NaN/throwing', () => {
+    const tooSmallBudget = focalDistanceMeters - 1
+
+    expect(returnEnvelopeEllipseRing(focus1, focus2, tooSmallBudget)).toBeUndefined()
+  })
+
+  it('accepts a budget at (i.e. not strictly below) the focal distance (a ~= c, a near-degenerate b~=0 ellipse)', () => {
+    // A hair above the exact focal distance to stay clear of floating-point
+    // rounding at the a === c boundary itself, while still exercising the
+    // near-degenerate (b close to 0) case without NaNs.
+    const ring = returnEnvelopeEllipseRing(focus1, focus2, focalDistanceMeters + 0.01)
+
+    expect(ring).toBeDefined()
+    for (const point of ring ?? []) {
+      expect(Number.isNaN(point.lat)).toBe(false)
+      expect(Number.isNaN(point.lng)).toBe(false)
+    }
+  })
+
+  it('places the semi-major-axis vertex (angle 0) at distance a from the center, along the focus1->focus2 axis', () => {
+    const budget = 1000 // a = 500
+    const ring = returnEnvelopeEllipseRing(focus1, focus2, budget)
+    expect(ring).toBeDefined()
+
+    const center = offsetLatLng(focus1, focalSeparationMeters, 0)
+    const semiMajorVertex = ring![0]
+
+    expect(distanceMetersBetween(center, semiMajorVertex)).toBeCloseTo(500, 4)
+    // Aligned due east of center, since the foci sit on the east/west axis.
+    expect(semiMajorVertex.lat).toBeCloseTo(center.lat, 6)
+    expect(semiMajorVertex.lng).toBeGreaterThan(center.lng)
+  })
+
+  it('places the semi-minor-axis vertex (angle PI/2) at distance b from the center', () => {
+    const budget = 1000 // a = 500, c = 400, b = sqrt(500^2 - 400^2) = 300
+    const sampleCount = 96
+    const ring = returnEnvelopeEllipseRing(focus1, focus2, budget, sampleCount)
+    expect(ring).toBeDefined()
+
+    const center = offsetLatLng(focus1, focalSeparationMeters, 0)
+    const quarterIndex = sampleCount / 4
+    const semiMinorVertex = ring![quarterIndex]
+
+    expect(distanceMetersBetween(center, semiMinorVertex)).toBeCloseTo(300, 4)
+  })
+
+  it('returns a closed ring: the first and last sampled points are identical', () => {
+    const ring = returnEnvelopeEllipseRing(focus1, focus2, 1000)
+
+    expect(ring).toBeDefined()
+    expect(ring![0]).toEqual(ring![ring!.length - 1])
+  })
+
+  it('every sampled point satisfies the ellipse-defining property: distances to both foci sum to the budget', () => {
+    const budget = 1200
+    const ring = returnEnvelopeEllipseRing(focus1, focus2, budget)
+    expect(ring).toBeDefined()
+
+    for (const point of ring ?? []) {
+      const sumOfFocalDistances = distanceMetersBetween(point, focus1) + distanceMetersBetween(point, focus2)
+      // Loose precision: distanceMetersBetween's own flat-earth longitude
+      // correction uses each call's *first* point's latitude, so measuring
+      // from both foci (at slightly different latitudes than the sampled
+      // point) compounds a small amount of approximation error on top of
+      // the ring's own construction — still well under 0.1% of the budget.
+      expect(sumOfFocalDistances).toBeCloseTo(budget, 0)
+    }
+  })
+
+  it('produces a circle (a === b) when both foci coincide (focal separation 0)', () => {
+    const samePoint = { lat: 64.6, lng: 26.4 }
+    const budget = 600 // a = b = 300, a circle of radius 300
+
+    const ring = returnEnvelopeEllipseRing(samePoint, samePoint, budget)
+    expect(ring).toBeDefined()
+
+    for (const point of ring ?? []) {
+      expect(distanceMetersBetween(samePoint, point)).toBeCloseTo(300, 3)
+    }
+  })
+
+  it('defaults to sampling within the 60-120 point range suggested by the issue', () => {
+    const ring = returnEnvelopeEllipseRing(focus1, focus2, 1000)
+
+    // +1 for the closing point that repeats the first.
+    expect(ring!.length - 1).toBeGreaterThanOrEqual(60)
+    expect(ring!.length - 1).toBeLessThanOrEqual(120)
+  })
+
+  it('honors an explicit sampleCount', () => {
+    const ring = returnEnvelopeEllipseRing(focus1, focus2, 1000, 60)
+
+    expect(ring).toHaveLength(61)
   })
 })
 
