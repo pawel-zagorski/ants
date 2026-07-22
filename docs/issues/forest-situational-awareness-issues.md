@@ -436,7 +436,7 @@ None — can start immediately.
 
 ---
 
-## [ ] R — Fire spreads: Growth Ellipse hex-grid Fire Footprint
+## [x] R — Fire spreads: Growth Ellipse hex-grid Fire Footprint
 
 ### Parent
 
@@ -448,10 +448,10 @@ Implement the deterministic Growth Ellipse model: given a Fire's ignition point,
 
 ### Acceptance criteria
 
-- [ ] Pure function computing a Fire's Fire Footprint (set of hex cell coordinates) given ignition point, elapsed time, and wind — unit-tested for: no wind (circular growth), strong wind (elongated downwind), and determinism (same inputs twice → byte-identical cell sets)
-- [ ] Ground Truth View renders a growing hex-tile shape for each Fire, visibly elongating downwind as wind speed increases
-- [ ] A Fire ignited early in a ~30–45 simulated-minute scenario grows to a visible multi-hundred-meter footprint by the end (sanity-checked manually or via a test asserting cell count grows over time)
-- [ ] Default (non-Ground-Truth) view shows no change from before this slice
+- [x] Pure function computing a Fire's Fire Footprint (set of hex cell coordinates) given ignition point, elapsed time, and wind — unit-tested for: no wind (circular growth), strong wind (elongated downwind), and determinism (same inputs twice → byte-identical cell sets)
+- [x] Ground Truth View renders a growing hex-tile shape for each Fire, visibly elongating downwind as wind speed increases
+- [x] A Fire ignited early in a ~30–45 simulated-minute scenario grows to a visible multi-hundred-meter footprint by the end (sanity-checked manually or via a test asserting cell count grows over time)
+- [x] Default (non-Ground-Truth) view shows no change from before this slice
 
 ### Blocked by
 
