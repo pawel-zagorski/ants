@@ -1,5 +1,6 @@
 import type { LatLng } from '../map/geo'
-import type { EventType, ScenarioEvent, ScenarioFireIgnition } from '../scenario/types'
+import type { HexCoordinate } from './growthEllipse'
+import type { EventType, ScenarioEvent, ScenarioFireIgnition, Wind } from '../scenario/types'
 import type { DroneType } from '../world/types'
 
 /**
@@ -62,16 +63,26 @@ export type FireMissionKind = 'roundTrip' | 'oneWay'
  * deliberately kept as its own variant rather than a generic
  * `assignedTargetId` on `'investigating'` (ADR-0004: Fire is not a kind of
  * Event, so its dispatch state stays its own variant too, mirroring
- * `FireRuntimeState` vs. `EventRuntimeState`), and deliberately has no
- * expiry timer of its own yet — unlike `'investigating'`'s fixed
- * `INVESTIGATION_DURATION_SIM_SECONDS`, a Fire investigation's end
- * condition depends on `missionKind` (one orbit lap vs. endurance
- * exhaustion) and is issue V/W's job to compute; `advanceSimulation` treats
- * it as sticky (carried forward unchanged) until then. Deliberately an
- * extensible union rather than a boolean flag: issue G's battery/endurance
- * telemetry already added `'investigating'`'s sibling modes this way, and
- * future issues (V/W) are expected to add further ones (e.g. `'lost'`)
- * without a breaking change here.
+ * `FireRuntimeState` vs. `EventRuntimeState`). `orbitRadiusMeters` (issue V)
+ * is a one-time snapshot of the Fire's real orbit radius
+ * (`growthEllipse.ts`'s `fireOrbitRadiusMetersAt`), taken the instant
+ * `withManualFireDispatch` starts this investigation — *not* recomputed
+ * per-tick from the still-growing Fire Footprint, so the orbit itself
+ * stays a simple, deterministic circle for the investigation's whole
+ * duration (see `engine/orbit.ts`) even though the separately-tracked
+ * Confirmed Shape (`FireRuntimeState.confirmedFootprintHexCells`) keeps
+ * live-updating every tick. There is deliberately still no fixed expiry
+ * timer here (unlike `'investigating'`'s fixed
+ * `INVESTIGATION_DURATION_SIM_SECONDS`): a `'roundTrip'`
+ * (`FireMissionKind`) investigation ends after one full orbit lap
+ * (`engine/orbit.ts`'s `orbitLapDurationSimSeconds`, checked in
+ * `advanceSimulation.ts`'s `activityAfterInvestigationExpiry`), while a
+ * `'oneWay'` investigation has no ending condition *yet* — it stays sticky
+ * (carried forward unchanged) forever until issue W adds its
+ * endurance-exhaustion ending. Deliberately an extensible union rather
+ * than a boolean flag: issue G's battery/endurance telemetry already added
+ * `'investigating'`'s sibling modes this way, and issue W is expected to
+ * add a further one (e.g. `'lost'`) without a breaking change here.
  */
 export type DroneActivityState =
   | { mode: 'patrolling' }
@@ -81,6 +92,7 @@ export type DroneActivityState =
       assignedFireId: string
       investigationStartedAtSimSeconds: number
       missionKind: FireMissionKind
+      orbitRadiusMeters: number
     }
 
 /**
@@ -141,11 +153,12 @@ export interface EventRuntimeState {
  * `Undetected → Detected → Resolved`, since a Fire never auto-resolves and
  * has a distinct middle tier name (a Tower, specifically, is what first
  * moves it out of `'undetected'` — see `detectingAssetIdForFire` in
- * `advanceSimulation.ts`). `'investigated'` is not yet reachable in this
- * slice (issue Q is a pure data-model split; the orbit/investigate
- * mechanics that would ever produce it are issues U/V) but is carried in
- * the type now so those later issues are additive, not a breaking change
- * here.
+ * `advanceSimulation.ts`). `'investigated'` (issue V) is reached the instant
+ * any Drone begins actively orbiting the Fire (see
+ * `FireRuntimeState.confirmedFootprintHexCells`) — a one-way ratchet, same
+ * monotonic-forward-only spirit as `EventStatus`: once `'investigated'`, a
+ * Fire's tier never reverts to `'towerDetected'`, even after every
+ * orbiting Drone leaves or is lost.
  */
 export type FireTier = 'undetected' | 'towerDetected' | 'investigated'
 
@@ -163,6 +176,21 @@ export type FireTier = 'undetected' | 'towerDetected' | 'investigated'
  * a Tower), and then carried forward unchanged, same sticky/monotonic
  * pattern as `EventRuntimeState`. Deliberately has no `durationSimSeconds`
  * and no resolved-equivalent tier — a Fire never auto-resolves.
+ *
+ * `confirmedFootprintHexCells`/`confirmedAtSimSeconds` (issue V,
+ * `CONTEXT.md`'s **Confirmed Shape** entry) together hold that Fire's
+ * Confirmed Shape: the real Fire Footprint (`growthEllipse.ts`'s
+ * `fireFootprintHexCells`) as last observed by an orbiting Drone.
+ * `advanceSimulation.ts` re-derives both, every tick, to the *current* live
+ * footprint while at least one Drone is actively orbiting this Fire
+ * (`droneActivity` has a `'investigatingFire'` entry with this
+ * `id` as its `assignedFireId`) — the instant the last such Drone stops
+ * (investigation complete, back to patrol; or, in a future issue, Lost),
+ * both fields simply stop being touched, freezing whatever they held on
+ * that last tick as a stale snapshot (`confirmedAtSimSeconds` records
+ * exactly when that snapshot was taken). Both are `undefined` until a Fire
+ * has been orbited at least once — i.e. exactly while `tier !==
+ * 'investigated'`.
  */
 export interface FireRuntimeState {
   id: string
@@ -171,6 +199,8 @@ export interface FireRuntimeState {
   spawnAtSimSeconds: number
   detectedByAssetId?: string
   detectedAtSimSeconds?: number
+  confirmedFootprintHexCells?: HexCoordinate[]
+  confirmedAtSimSeconds?: number
 }
 
 /**
@@ -194,7 +224,14 @@ export interface FireRuntimeState {
  * (sticky status/tier); for Drones, so "how long has this Drone been
  * investigating" and "which Drone is already unavailable" can be computed
  * tick-over-tick. Contains no reference to React/Leaflet/wall-clock time —
- * see `advanceSimulation`.
+ * see `advanceSimulation`. `wind` (issue V) is the Scenario's own `Wind`,
+ * copied through unchanged from `initializeSimulationState` (mirrors
+ * `scenarioEvents`/`scenarioFireIgnitions`: scenario-fixed, never
+ * recomputed) — needed here, rather than only at the map-rendering layer
+ * like before, now that Fire Footprint math
+ * (`growthEllipse.ts`'s `fireFootprintHexCells`/`fireOrbitRadiusMetersAt`)
+ * feeds real engine behavior (orbit radius, Confirmed Shape), not just
+ * `FireFootprintLayer`'s Ground-Truth-View rendering.
  */
 export interface SimulationState {
   elapsedSimSeconds: number
@@ -205,4 +242,5 @@ export interface SimulationState {
   scenarioFireIgnitions: ScenarioFireIgnition[]
   events: Record<string, EventRuntimeState>
   fires: Record<string, FireRuntimeState>
+  wind: Wind
 }

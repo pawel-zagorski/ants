@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { advanceSimulation, initializeSimulationState, withManualDispatch, withManualFireDispatch } from './advanceSimulation'
 import { INVESTIGATION_DURATION_SIM_SECONDS } from './dispatch'
+import { fireFootprintHexCells, fireOrbitRadiusMetersAt } from './growthEllipse'
+import { orbitLapDurationSimSeconds } from './orbit'
 import { haversineDistanceMeters } from '../test/haversineDistanceMeters'
 import { createWorldFixture, droneSpecFixture, windFixture } from '../test/worldFixtures'
 import type { Scenario } from '../scenario/types'
@@ -801,6 +803,7 @@ describe('withManualFireDispatch (issue U)', () => {
       assignedFireId: 'fire-1',
       investigationStartedAtSimSeconds: 42,
       missionKind: 'roundTrip',
+      orbitRadiusMeters: fireOrbitRadiusMetersAt(42, TEST_WIND),
     })
   })
 
@@ -820,8 +823,13 @@ describe('withManualFireDispatch (issue U)', () => {
     expect(dispatched.dronePatrol['drone-1'].position).toEqual(firePosition)
   })
 
-  it('starts a manually-sent Fixed-Wing Drone circling (not hovering) the Fire, since it cannot hover', () => {
-    const state = advanceSimulation(initializeSimulationState(worldWithDrone('FixedWingDrone'), towerDetectedFireScenario()), 0)
+  it('starts a manually-sent Fixed-Wing Drone circling (not hovering) the Fire, since it cannot hover, once the Fire has grown a non-zero extent to orbit', () => {
+    // At elapsedSimSeconds 0 the Fire has *just* ignited — its extent (and
+    // therefore its orbit radius) is still exactly zero, so dispatching
+    // that instant would degenerately place the Drone right on the Fire's
+    // own position (see `orbit.ts`'s `orbitAngleRadiansAt` doc comment).
+    // Advancing a bit first gives the Fire a real, non-zero extent to orbit.
+    const state = advanceSimulation(initializeSimulationState(worldWithDrone('FixedWingDrone'), towerDetectedFireScenario()), 42)
 
     const dispatched = withManualFireDispatch(state, 'drone-1', 'fire-1', 'roundTrip')
 
@@ -873,6 +881,139 @@ describe('withManualFireDispatch (issue U)', () => {
     withManualFireDispatch(state, 'drone-1', 'fire-1', 'roundTrip')
 
     expect(state).toEqual(snapshotBefore)
+  })
+})
+
+describe('Fire orbit / Confirmed Shape (issue V)', () => {
+  const firePosition = { lat: 64.55, lng: 26.25 }
+  // Nonzero, so orbit angular speed (and therefore lap duration) is
+  // well-defined — `withManualFireDispatch (issue U)`'s own
+  // `worldWithDrone` deliberately uses `patrolSpeedMetersPerSecond: 0`
+  // (irrelevant to *that* block's assertions), which would make a Drone's
+  // orbit linear speed zero and a lap take forever — not usable here.
+  const droneLinearSpeedMetersPerSecond = 10
+
+  function towerDetectedFireScenario(): Scenario {
+    return { events: [{ id: 'fire-1', type: 'Fire', position: firePosition, spawnAtSimSeconds: 0 }], wind: TEST_WIND }
+  }
+
+  function worldWithOrbitingDrone(): World {
+    return createWorldFixture({
+      towers: [{ id: 'tower-1', type: 'Tower', position: firePosition, detectionRadiusMeters: 500 }],
+      baseStations: [{ id: 'base-1', type: 'BaseStation', position: firePosition }],
+      drones: [
+        {
+          id: 'drone-1',
+          type: 'Quadrocopter',
+          position: firePosition,
+          homeBaseStationId: 'base-1',
+          ...droneSpecFixture,
+          patrolRadiusMeters: 100,
+          patrolSpeedMetersPerSecond: droneLinearSpeedMetersPerSecond,
+          detectionRadiusMeters: 500,
+        },
+      ],
+    })
+  }
+
+  // Dispatches at elapsedSimSeconds 100 (not 0), so the Fire has already
+  // grown a real, non-zero extent to orbit — see the Fixed-Wing orbit test
+  // above for why dispatching right at ignition would be degenerate.
+  const DISPATCH_AT_SIM_SECONDS = 100
+
+  function dispatchedState(missionKind: 'roundTrip' | 'oneWay'): SimulationState {
+    const state = advanceSimulation(
+      initializeSimulationState(worldWithOrbitingDrone(), towerDetectedFireScenario()),
+      DISPATCH_AT_SIM_SECONDS,
+    )
+    return withManualFireDispatch(state, 'drone-1', 'fire-1', missionKind)
+  }
+
+  it("ratchets the Fire's tier to 'investigated' the instant a Drone begins orbiting it", () => {
+    const state = advanceSimulation(
+      initializeSimulationState(worldWithOrbitingDrone(), towerDetectedFireScenario()),
+      DISPATCH_AT_SIM_SECONDS,
+    )
+    expect(state.fires['fire-1'].tier).toBe('towerDetected')
+
+    const dispatched = withManualFireDispatch(state, 'drone-1', 'fire-1', 'roundTrip')
+
+    expect(dispatched.fires['fire-1'].tier).toBe('investigated')
+  })
+
+  it('exposes a live Confirmed Shape, matching the real live Fire Footprint, on every tick while a Drone actively orbits', () => {
+    let state = dispatchedState('oneWay')
+
+    for (const elapsedSimSeconds of [DISPATCH_AT_SIM_SECONDS + 5, DISPATCH_AT_SIM_SECONDS + 15, DISPATCH_AT_SIM_SECONDS + 40]) {
+      state = advanceSimulation(state, elapsedSimSeconds)
+
+      const fire = state.fires['fire-1']
+      expect(fire.tier).toBe('investigated')
+      expect(fire.confirmedAtSimSeconds).toBe(elapsedSimSeconds)
+      expect(fire.confirmedFootprintHexCells).toEqual(fireFootprintHexCells(elapsedSimSeconds - fire.spawnAtSimSeconds, TEST_WIND))
+    }
+  })
+
+  it('completes a roundTrip (Bingo Range) Drone\'s investigation after exactly one full orbit lap and returns it to patrolling', () => {
+    const dispatched = withManualFireDispatch(
+      advanceSimulation(initializeSimulationState(worldWithOrbitingDrone(), towerDetectedFireScenario()), DISPATCH_AT_SIM_SECONDS),
+      'drone-1',
+      'fire-1',
+      'roundTrip',
+    )
+    const orbitRadiusMeters = fireOrbitRadiusMetersAt(DISPATCH_AT_SIM_SECONDS, TEST_WIND)
+    const lapDurationSimSeconds = orbitLapDurationSimSeconds(orbitRadiusMeters, droneLinearSpeedMetersPerSecond)
+
+    const justBeforeLapCompletes = advanceSimulation(dispatched, DISPATCH_AT_SIM_SECONDS + lapDurationSimSeconds - 1)
+    expect(justBeforeLapCompletes.droneActivity['drone-1']).toMatchObject({ mode: 'investigatingFire' })
+
+    const justAfterLapCompletes = advanceSimulation(dispatched, DISPATCH_AT_SIM_SECONDS + lapDurationSimSeconds + 1)
+    expect(justAfterLapCompletes.droneActivity['drone-1']).toEqual({ mode: 'patrolling' })
+  })
+
+  it('freezes the Confirmed Shape as a stale snapshot the moment the last orbiting Drone stops, and never reverts the Fire tier back', () => {
+    const dispatched = withManualFireDispatch(
+      advanceSimulation(initializeSimulationState(worldWithOrbitingDrone(), towerDetectedFireScenario()), DISPATCH_AT_SIM_SECONDS),
+      'drone-1',
+      'fire-1',
+      'roundTrip',
+    )
+    const orbitRadiusMeters = fireOrbitRadiusMetersAt(DISPATCH_AT_SIM_SECONDS, TEST_WIND)
+    const lapDurationSimSeconds = orbitLapDurationSimSeconds(orbitRadiusMeters, droneLinearSpeedMetersPerSecond)
+    const lastTickStillOrbitingAtSimSeconds = DISPATCH_AT_SIM_SECONDS + lapDurationSimSeconds - 1
+    const justAfterLapCompletesAtSimSeconds = DISPATCH_AT_SIM_SECONDS + lapDurationSimSeconds + 1
+
+    // A real Simulation Clock ticks far more often than this test does, so
+    // step through an intermediate still-orbiting tick first (recording
+    // its live Confirmed Shape) rather than jumping straight from dispatch
+    // to well after lap completion in one big leap, which would otherwise
+    // skip every tick the freeze is actually supposed to have captured.
+    const stillOrbiting = advanceSimulation(dispatched, lastTickStillOrbitingAtSimSeconds)
+    expect(stillOrbiting.droneActivity['drone-1']).toMatchObject({ mode: 'investigatingFire' })
+    const lastLiveShape = stillOrbiting.fires['fire-1'].confirmedFootprintHexCells
+
+    const departed = advanceSimulation(stillOrbiting, justAfterLapCompletesAtSimSeconds)
+    expect(departed.droneActivity['drone-1']).toEqual({ mode: 'patrolling' })
+    expect(departed.fires['fire-1'].tier).toBe('investigated')
+    expect(departed.fires['fire-1'].confirmedFootprintHexCells).toEqual(lastLiveShape)
+    expect(departed.fires['fire-1'].confirmedAtSimSeconds).toBe(lastTickStillOrbitingAtSimSeconds)
+
+    const muchLater = advanceSimulation(departed, justAfterLapCompletesAtSimSeconds + 10_000)
+
+    expect(muchLater.fires['fire-1'].tier).toBe('investigated')
+    expect(muchLater.fires['fire-1'].confirmedFootprintHexCells).toEqual(lastLiveShape)
+    expect(muchLater.fires['fire-1'].confirmedAtSimSeconds).toBe(lastTickStillOrbitingAtSimSeconds)
+  })
+
+  it('leaves a oneWay (One-Way Mission) Drone orbiting indefinitely, with no lap-based ending, keeping the Confirmed Shape live the whole time', () => {
+    const dispatched = dispatchedState('oneWay')
+    const orbitRadiusMeters = fireOrbitRadiusMetersAt(DISPATCH_AT_SIM_SECONDS, TEST_WIND)
+    const lapDurationSimSeconds = orbitLapDurationSimSeconds(orbitRadiusMeters, droneLinearSpeedMetersPerSecond)
+
+    const wayPastOneLap = advanceSimulation(dispatched, DISPATCH_AT_SIM_SECONDS + lapDurationSimSeconds * 5)
+
+    expect(wayPastOneLap.droneActivity['drone-1']).toMatchObject({ mode: 'investigatingFire', missionKind: 'oneWay' })
+    expect(wayPastOneLap.fires['fire-1'].confirmedAtSimSeconds).toBe(DISPATCH_AT_SIM_SECONDS + lapDurationSimSeconds * 5)
   })
 })
 

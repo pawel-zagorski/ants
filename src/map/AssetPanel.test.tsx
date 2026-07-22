@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { AssetPanel } from './AssetPanel'
 import type { DroneActivityState, DronePatrolState, FireRuntimeState, SimulationState } from '../engine/types'
-import { droneSpecFixture } from '../test/worldFixtures'
+import { droneSpecFixture, windFixture } from '../test/worldFixtures'
 import type { BaseStation, Drone, Tower } from '../world/types'
 
 const tower: Tower = {
@@ -63,6 +63,7 @@ function simulationStateFixture(overrides: Partial<SimulationState> = {}): Simul
     scenarioFireIgnitions: [],
     events: {},
     fires: {},
+    wind: windFixture,
     ...overrides,
   }
 }
@@ -207,6 +208,7 @@ describe('AssetPanel Drone telemetry (issue G)', () => {
       assignedFireId: 'fire-1',
       investigationStartedAtSimSeconds: 0,
       missionKind: 'oneWay',
+      orbitRadiusMeters: 300,
     }
     const simulationState = simulationStateFixture({
       elapsedSimSeconds: 5,
@@ -312,7 +314,13 @@ describe('AssetPanel Base Station telemetry (issue G)', () => {
     const simulationState = simulationStateFixture({
       droneActivity: {
         'drone-1': { mode: 'patrolling' },
-        'drone-2': { mode: 'investigatingFire', assignedFireId: 'fire-1', investigationStartedAtSimSeconds: 0, missionKind: 'roundTrip' },
+        'drone-2': {
+          mode: 'investigatingFire',
+          assignedFireId: 'fire-1',
+          investigationStartedAtSimSeconds: 0,
+          missionKind: 'roundTrip',
+          orbitRadiusMeters: 300,
+        },
       },
     })
 

@@ -147,6 +147,7 @@ describe('droneTelemetryFor — investigatingFire (issue U)', () => {
     assignedFireId: 'fire-1',
     investigationStartedAtSimSeconds: 100,
     missionKind: 'roundTrip',
+    orbitRadiusMeters: 300,
   }
 
   it('reports telemetry state "investigating" (shared with Event investigation) and the assigned Fire id/missionKind, not an assigned Event id', () => {
@@ -159,17 +160,17 @@ describe('droneTelemetryFor — investigatingFire (issue U)', () => {
   })
 
   it('reports the given missionKind ("oneWay") unchanged', () => {
-    const oneWayActivity: DroneActivityState = { ...investigatingFireActivity, missionKind: 'oneWay' }
+    const oneWayActivity: DroneActivityState = { ...investigatingFireActivity, mode: 'investigatingFire', missionKind: 'oneWay' }
     const telemetry = droneTelemetryFor(patrollingQuadrocopter, oneWayActivity, 110, MAX_ENDURANCE_SIM_SECONDS)
 
     expect(telemetry.missionKind).toBe('oneWay')
   })
 
-  it('reports zero speed and no heading for a hovering (Fire-investigating) Quadrocopter', () => {
+  it('reports non-zero speed and a defined heading for an orbiting (Fire-investigating) Quadrocopter (issue V: both Drone types orbit the Fire, unlike Event investigation where a Quadrocopter hovers)', () => {
     const telemetry = droneTelemetryFor(patrollingQuadrocopter, investigatingFireActivity, 110, MAX_ENDURANCE_SIM_SECONDS)
 
-    expect(telemetry.speedMetersPerSecond).toBe(0)
-    expect(telemetry.headingDegrees).toBeUndefined()
+    expect(telemetry.speedMetersPerSecond).toBeGreaterThan(0)
+    expect(telemetry.headingDegrees).toBeGreaterThanOrEqual(0)
   })
 
   it('reports non-zero speed and a defined heading for a circling (Fire-investigating) Fixed-Wing Drone', () => {
@@ -209,7 +210,13 @@ describe('baseStationCountsFor', () => {
 
   it('counts a Fire-investigating Drone (issue U: mode "investigatingFire") homed at the Base Station as deployed too', () => {
     const droneActivity: Record<string, DroneActivityState> = {
-      'drone-1': { mode: 'investigatingFire', assignedFireId: 'fire-1', investigationStartedAtSimSeconds: 0, missionKind: 'oneWay' },
+      'drone-1': {
+        mode: 'investigatingFire',
+        assignedFireId: 'fire-1',
+        investigationStartedAtSimSeconds: 0,
+        missionKind: 'oneWay',
+        orbitRadiusMeters: 300,
+      },
       'drone-2': { mode: 'patrolling' },
       'drone-3': { mode: 'patrolling' },
     }

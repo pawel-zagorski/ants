@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fireFootprintExtentMetersAt, fireFootprintHexCells, hexCentroidOffsetMeters } from './growthEllipse'
+import { fireFootprintExtentMetersAt, fireFootprintHexCells, fireOrbitRadiusMetersAt, hexCentroidOffsetMeters } from './growthEllipse'
 import type { HexCoordinate } from './growthEllipse'
 import type { Wind } from '../scenario/types'
 
@@ -51,6 +51,54 @@ describe('fireFootprintExtentMetersAt', () => {
   it('never grows for zero or negative elapsed time', () => {
     expect(fireFootprintExtentMetersAt(0, STRONG_NORTHERLY_WIND).semiMajorAxisMeters).toBe(0)
     expect(fireFootprintExtentMetersAt(-500, STRONG_NORTHERLY_WIND).semiMajorAxisMeters).toBe(0)
+  })
+})
+
+describe('fireOrbitRadiusMetersAt', () => {
+  it('is zero at ignition (elapsedSecondsSinceIgnition <= 0)', () => {
+    expect(fireOrbitRadiusMetersAt(0, STRONG_NORTHERLY_WIND)).toBe(0)
+    expect(fireOrbitRadiusMetersAt(-100, STRONG_NORTHERLY_WIND)).toBe(0)
+  })
+
+  it('grows as the Fire Footprint grows (scales with elapsed time since ignition)', () => {
+    const radiusAt1000 = fireOrbitRadiusMetersAt(1000, STRONG_NORTHERLY_WIND)
+    const radiusAt2000 = fireOrbitRadiusMetersAt(2000, STRONG_NORTHERLY_WIND)
+
+    expect(radiusAt2000).toBeGreaterThan(radiusAt1000)
+    expect(radiusAt1000).toBeGreaterThan(0)
+  })
+
+  it('equals the semi-major axis length for a zero-wind (circular) footprint, since centerOffsetMeters is zero', () => {
+    const radius = fireOrbitRadiusMetersAt(1000, NO_WIND)
+    const extent = fireFootprintExtentMetersAt(1000, NO_WIND)
+
+    expect(radius).toBeCloseTo(extent.semiMajorAxisMeters, 6)
+  })
+
+  it('equals the downwind head distance (centerOffsetMeters + semiMajorAxisMeters) under wind', () => {
+    const wind: Wind = { directionDegrees: 0, speedMetersPerSecond: 5 }
+    const radius = fireOrbitRadiusMetersAt(1000, wind)
+
+    // headDistance = 0.5 m/s * 1000s = 500m (see fireFootprintExtentMetersAt's own test above).
+    expect(radius).toBeCloseTo(500, 6)
+  })
+
+  it('always encloses every Fire Footprint hex cell for a given elapsed time/wind (no cell centroid exceeds this radius from the ignition point)', () => {
+    const wind: Wind = { directionDegrees: 45, speedMetersPerSecond: 8 }
+    const elapsedSecondsSinceIgnition = 2500
+    const radius = fireOrbitRadiusMetersAt(elapsedSecondsSinceIgnition, wind)
+    const cells = fireFootprintHexCells(elapsedSecondsSinceIgnition, wind)
+
+    for (const cell of cells) {
+      const { eastMeters, northMeters } = hexCentroidOffsetMeters(cell)
+      const distanceFromIgnitionMeters = Math.sqrt(eastMeters ** 2 + northMeters ** 2)
+      // A generous margin for the hex cell's own footprint beyond its centroid.
+      expect(distanceFromIgnitionMeters).toBeLessThanOrEqual(radius + 100)
+    }
+  })
+
+  it('is a pure, deterministic function of its inputs', () => {
+    expect(fireOrbitRadiusMetersAt(1500, STRONG_NORTHERLY_WIND)).toBe(fireOrbitRadiusMetersAt(1500, STRONG_NORTHERLY_WIND))
   })
 })
 

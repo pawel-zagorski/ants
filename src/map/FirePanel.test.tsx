@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { FirePanel } from './FirePanel'
 import type { DroneActivityState, DronePatrolState, FireRuntimeState, SimulationState } from '../engine/types'
-import { droneSpecFixture } from '../test/worldFixtures'
+import { droneSpecFixture, windFixture } from '../test/worldFixtures'
 import type { BaseStation, Drone } from '../world/types'
 
 const towerDetectedFire: FireRuntimeState = {
@@ -25,6 +25,7 @@ function simulationStateFixture(overrides: Partial<SimulationState> = {}): Simul
     scenarioFireIgnitions: [],
     events: {},
     fires: {},
+    wind: windFixture,
     ...overrides,
   }
 }
@@ -53,6 +54,7 @@ describe('FirePanel', () => {
         simulationState={simulationStateFixture()}
         drones={[]}
         baseStations={[]}
+        wind={windFixture}
         onSend={vi.fn()}
         onClose={vi.fn()}
       />,
@@ -73,6 +75,7 @@ describe('FirePanel', () => {
         simulationState={simulationStateFixture()}
         drones={[]}
         baseStations={[]}
+        wind={windFixture}
         onSend={vi.fn()}
         onClose={vi.fn()}
       />,
@@ -95,6 +98,7 @@ describe('FirePanel', () => {
         simulationState={simulationStateFixture()}
         drones={[]}
         baseStations={[]}
+        wind={windFixture}
         onSend={vi.fn()}
         onClose={vi.fn()}
       />,
@@ -112,6 +116,7 @@ describe('FirePanel', () => {
         simulationState={simulationStateFixture()}
         drones={[]}
         baseStations={[]}
+        wind={windFixture}
         onSend={vi.fn()}
         onClose={onClose}
       />,
@@ -145,6 +150,7 @@ describe('FirePanel Bingo Range / One-Way Mission lists (issue U)', () => {
         simulationState={simulationState}
         drones={[bingoDrone]}
         baseStations={[nearBaseStation]}
+        wind={windFixture}
         onSend={vi.fn()}
         onClose={vi.fn()}
       />,
@@ -182,6 +188,7 @@ describe('FirePanel Bingo Range / One-Way Mission lists (issue U)', () => {
         simulationState={simulationState}
         drones={[oneWayDrone]}
         baseStations={[nearBaseStation]}
+        wind={windFixture}
         onSend={vi.fn()}
         onClose={vi.fn()}
       />,
@@ -214,6 +221,7 @@ describe('FirePanel Bingo Range / One-Way Mission lists (issue U)', () => {
         simulationState={simulationState}
         drones={[unreachableDrone]}
         baseStations={[nearBaseStation]}
+        wind={windFixture}
         onSend={vi.fn()}
         onClose={vi.fn()}
       />,
@@ -248,6 +256,7 @@ describe('FirePanel Bingo Range / One-Way Mission lists (issue U)', () => {
         simulationState={simulationState}
         drones={[busyDrone]}
         baseStations={[nearBaseStation]}
+        wind={windFixture}
         onSend={vi.fn()}
         onClose={vi.fn()}
       />,
@@ -263,6 +272,7 @@ describe('FirePanel Bingo Range / One-Way Mission lists (issue U)', () => {
         simulationState={simulationStateFixture()}
         drones={[]}
         baseStations={[]}
+        wind={windFixture}
         onSend={vi.fn()}
         onClose={vi.fn()}
       />,
@@ -295,6 +305,7 @@ describe('FirePanel Bingo Range / One-Way Mission lists (issue U)', () => {
         simulationState={simulationState}
         drones={[bingoDrone]}
         baseStations={[nearBaseStation]}
+        wind={windFixture}
         onSend={onSend}
         onClose={vi.fn()}
       />,
@@ -329,6 +340,7 @@ describe('FirePanel Bingo Range / One-Way Mission lists (issue U)', () => {
         simulationState={simulationState}
         drones={[oneWayDrone]}
         baseStations={[nearBaseStation]}
+        wind={windFixture}
         onSend={onSend}
         onClose={vi.fn()}
       />,
