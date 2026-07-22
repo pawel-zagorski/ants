@@ -2,13 +2,14 @@ import { render } from '@testing-library/react'
 import { MapContainer } from 'react-leaflet'
 import { describe, expect, it } from 'vitest'
 import { DatalinkLines } from './DatalinkLines'
+import type { DroneActivityState } from '../engine/types'
 import { createWorldFixture, droneSpecFixture } from '../test/worldFixtures'
 import type { World } from '../world/types'
 
-function renderDatalinkLines(world: World) {
+function renderDatalinkLines(world: World, droneActivity?: Record<string, DroneActivityState>) {
   return render(
     <MapContainer center={[64.5644, 26.4947]} zoom={9}>
-      <DatalinkLines world={world} />
+      <DatalinkLines world={world} droneActivity={droneActivity} />
     </MapContainer>,
   )
 }
@@ -78,6 +79,48 @@ describe('DatalinkLines', () => {
     renderDatalinkLines(world)
 
     expect(document.querySelectorAll('path.datalink-line')).toHaveLength(0)
+  })
+})
+
+describe('DatalinkLines Lost Drone exclusion (issue W)', () => {
+  const world = createWorldFixture({
+    towers: [{ id: 'tower-1', type: 'Tower', position: { lat: 64.7, lng: 26.2 }, detectionRadiusMeters: 15000 }],
+    baseStations: [{ id: 'base-1', type: 'BaseStation', position: { lat: 64.5, lng: 26.25 } }],
+    drones: [
+      {
+        id: 'drone-1',
+        type: 'Quadrocopter',
+        position: { lat: 64.501, lng: 26.251 },
+        homeBaseStationId: 'base-1',
+        ...droneSpecFixture,
+      },
+      {
+        id: 'drone-2',
+        type: 'FixedWingDrone',
+        position: { lat: 64.699, lng: 26.201 },
+        homeBaseStationId: 'base-1',
+        ...droneSpecFixture,
+      },
+    ],
+  })
+
+  it('renders no Datalink line for a Lost Drone, while still rendering every other Drone\'s', () => {
+    const droneActivity: Record<string, DroneActivityState> = {
+      'drone-1': { mode: 'lost', position: world.drones[0].position, lostAtSimSeconds: 100 },
+      'drone-2': { mode: 'patrolling' },
+    }
+
+    renderDatalinkLines(world, droneActivity)
+
+    expect(document.querySelectorAll('path.datalink-line')).toHaveLength(1)
+    expect(document.querySelector('.datalink-line-drone-drone-1')).toBeNull()
+    expect(document.querySelector('.datalink-line-drone-drone-2')).not.toBeNull()
+  })
+
+  it('renders every Drone\'s line as usual when droneActivity is omitted entirely', () => {
+    renderDatalinkLines(world)
+
+    expect(document.querySelectorAll('path.datalink-line')).toHaveLength(2)
   })
 })
 

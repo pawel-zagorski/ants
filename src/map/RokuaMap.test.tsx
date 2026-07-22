@@ -802,3 +802,104 @@ describe('RokuaMap Return Envelope overlay (issue K)', () => {
     expect(document.querySelectorAll('.return-envelope')).toHaveLength(1)
   })
 })
+
+describe('RokuaMap Lost Drone / One-Way Mission endurance exhaustion (issue W)', () => {
+  const firePosition = { lat: 64.7, lng: 26.2 }
+  // drone-1's home Base Station sits 300m from the Fire, and it patrols a
+  // tight 1m loop right on top of that Base Station — so its live patrol
+  // position is ~300m from the Fire at dispatch time. Budget at
+  // `maxEnduranceSimSeconds` 40 * `cruiseSpeedMetersPerSecond` 10 = 400m
+  // clears that one-way 300m leg (`classifyFireDispatch`'s `'oneWayMission'`
+  // condition), but not the ~600m round trip back to the same (only) Base
+  // Station (`'bingoRange'`'s condition) — guaranteeing `'oneWayMission'`,
+  // never `'bingoRange'`, without needing a realistic-distance World.
+  const baseStationPosition = offsetLatLng(firePosition, 300, 0)
+  const lostDroneWorld: World = {
+    bounds: world.bounds,
+    towers: [{ id: 'tower-1', type: 'Tower', position: firePosition, detectionRadiusMeters: 500 }],
+    baseStations: [{ id: 'base-1', type: 'BaseStation', position: baseStationPosition }],
+    drones: [
+      {
+        id: 'drone-1',
+        type: 'Quadrocopter',
+        position: baseStationPosition,
+        homeBaseStationId: 'base-1',
+        ...droneSpecFixture,
+        maxEnduranceSimSeconds: 40,
+        cruiseSpeedMetersPerSecond: 10,
+        patrolRadiusMeters: 1,
+      },
+    ],
+  }
+
+  const fireScenario: Scenario = {
+    events: [{ id: 'fire-1', type: 'Fire', position: firePosition, spawnAtSimSeconds: 0 }],
+    wind: TEST_WIND,
+  }
+
+  /** Opens the Fire panel, sends `drone-1` on the One-Way Mission, then advances the Simulation Clock two Steps (60 simulated seconds — comfortably past the 40s `maxEnduranceSimSeconds` above) so it goes Lost. */
+  function renderWithLostDrone() {
+    render(<RokuaMap world={lostDroneWorld} scenario={fireScenario} />)
+
+    fireEvent.click(document.querySelector('.event-icon-fire') as Element)
+    expect(screen.getByRole('dialog')).toHaveTextContent('No Drones currently in Bingo Range')
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Step' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Step' }))
+  }
+
+  it('renders the Lost Drone marker with the greyed-out asset-icon-lost treatment', () => {
+    renderWithLostDrone()
+
+    const marker = document.querySelector('.asset-icon-quadrocopter')
+    expect(marker).not.toBeNull()
+    expect(marker).toHaveClass('asset-icon-lost')
+  })
+
+  it('shows "Lost" as the Drone\'s own status-panel state', () => {
+    renderWithLostDrone()
+
+    fireEvent.click(document.querySelector('.asset-icon-quadrocopter') as Element)
+
+    expect(screen.getByRole('dialog')).toHaveTextContent('Lost')
+  })
+
+  it('never lists the Lost Drone in the Fire panel\'s Bingo Range/One-Way Mission lists again', () => {
+    renderWithLostDrone()
+
+    fireEvent.click(document.querySelector('.event-icon-fire') as Element)
+
+    const panel = screen.getByRole('dialog')
+    expect(panel).toHaveTextContent('No Drones currently in Bingo Range')
+    expect(panel).toHaveTextContent('No Drones available for a One-Way Mission')
+    expect(screen.queryByRole('button', { name: 'Send' })).toBeNull()
+  })
+
+  it('renders no Datalink line for the Lost Drone', () => {
+    renderWithLostDrone()
+
+    expect(document.querySelector('.datalink-line-drone-drone-1')).toBeNull()
+  })
+
+  it('renders no Return Envelope for the Lost Drone even once its status panel is open', () => {
+    renderWithLostDrone()
+
+    fireEvent.click(document.querySelector('.asset-icon-quadrocopter') as Element)
+
+    expect(document.querySelectorAll('.return-envelope')).toHaveLength(0)
+  })
+
+  it('keeps the Drone frozen at its Lost position as the Simulation Clock advances further, rather than resuming any movement', () => {
+    renderWithLostDrone()
+
+    fireEvent.click(document.querySelector('.asset-icon-quadrocopter') as Element)
+    const positionAtLoss = screen.getByRole('dialog').textContent
+
+    fireEvent.click(screen.getByRole('button', { name: 'Step' }))
+    fireEvent.click(document.querySelector('.asset-icon-quadrocopter') as Element)
+    const positionMuchLater = screen.getByRole('dialog').textContent
+
+    expect(positionMuchLater).toEqual(positionAtLoss)
+  })
+})

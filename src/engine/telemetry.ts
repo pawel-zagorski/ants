@@ -36,14 +36,18 @@ export function batteryPercentAt(elapsedSimSeconds: number, maxEnduranceSimSecon
  * The PRD's Drone `state` telemetry field ("Asset status panels"
  * Implementation Decision) names six possible values, but this engine has
  * never modeled idle/returning/charging/fault — no other issue introduces
- * battery-gated or return-to-base behavior. Kept as a 6-value union for
- * forward-compatibility (the same "type supports more than the engine
- * currently produces" pattern `EventStatus` already used ahead of issue
- * G's `'resolved'`), but {@link droneTelemetryFor} only ever actually
- * produces `'patrolling'`/`'investigating'`, mapped 1:1 from
- * `DroneActivityState.mode`.
+ * battery-gated or return-to-base behavior. Kept as a (now 7-value, since
+ * issue W added `'lost'`) union for forward-compatibility (the same "type
+ * supports more than the engine currently produces" pattern `EventStatus`
+ * already used ahead of issue G's `'resolved'`), but {@link
+ * droneTelemetryFor} only ever actually produces
+ * `'patrolling'`/`'investigating'`/`'lost'`, mapped 1:1 from
+ * `DroneActivityState.mode`. `'lost'` (issue W, `CONTEXT.md`'s **Lost**
+ * entry) is the one telemetry-state value not drawn from the PRD's
+ * original six — it names this engine's own terminal
+ * endurance-exhaustion state, which the PRD's list predates.
  */
-export type DroneTelemetryState = 'idle' | 'patrolling' | 'investigating' | 'returning' | 'charging' | 'fault'
+export type DroneTelemetryState = 'idle' | 'patrolling' | 'investigating' | 'returning' | 'charging' | 'fault' | 'lost'
 
 /**
  * Full status-panel telemetry for a single Drone (issue G): everything the
@@ -93,7 +97,18 @@ export interface DroneTelemetry {
  * doc comment for why that speed, not `cruiseSpeedMetersPerSecond`,
  * governs it) rather than `dispatch.ts`'s `investigateMotionFor` (which
  * still governs Event investigation only, unchanged: hover for a
- * Quadrocopter, fixed-150m-circle for a Fixed-Wing Drone).
+ * Quadrocopter, fixed-150m-circle for a Fixed-Wing Drone). `'lost'` (issue
+ * W) reports its own dedicated telemetry `state` (`'lost'`, unlike
+ * `'investigatingFire'`'s shared-with-Event-investigation `'investigating'`
+ * label — a Lost Drone is not investigating anything anymore) and its
+ * frozen `activity.position` verbatim, with zero speed and no heading (a
+ * Drone that has run out of endurance and stopped moving has no direction
+ * of travel, same "stationary craft has no heading" rationale as a
+ * hovering Quadrocopter) — `batteryPercent`/`remainingEnduranceSimSeconds`
+ * need no special-casing at all here since a Drone can only ever reach
+ * `'lost'` once `elapsedSimSeconds >= maxEnduranceSimSeconds`, at which
+ * point the battery/endurance helpers above have already floored both to
+ * `0` on their own.
  * `maxEnduranceSimSeconds` is this specific Drone's own value (issue I —
  * `Drone.maxEnduranceSimSeconds`), not a shared constant, so two Drones
  * with different max endurances drain at different rates.
@@ -139,6 +154,16 @@ export function droneTelemetryFor(
       ...(motion.headingDegrees !== undefined ? { headingDegrees: motion.headingDegrees } : {}),
       assignedFireId: activity.assignedFireId,
       missionKind: activity.missionKind,
+    }
+  }
+
+  if (activity.mode === 'lost') {
+    return {
+      state: 'lost',
+      position: activity.position,
+      batteryPercent,
+      remainingEnduranceSimSeconds,
+      speedMetersPerSecond: 0,
     }
   }
 

@@ -44,7 +44,9 @@ function formatDetectedAt(detectedAtSimSeconds: number): string {
  * `AssetPanel.tsx`'s own precedent of a small private
  * `SimulationState`-derived lookup (see its `trackedFireEventFor`) —
  * `telemetry.ts` is for live per-asset telemetry values, not this kind of
- * one-line availability filter.
+ * one-line availability filter. A `'lost'` Drone (issue W) needs no
+ * separate exclusion here either: its mode is `'lost'`, not `'patrolling'`,
+ * so it already fails this same `=== 'patrolling'` check, permanently.
  */
 function availableDronesFor(drones: readonly Drone[], droneActivity: SimulationState['droneActivity']): Drone[] {
   return drones.filter((drone) => (droneActivity[drone.id]?.mode ?? 'patrolling') === 'patrolling')
