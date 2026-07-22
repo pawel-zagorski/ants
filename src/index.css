@@ -252,6 +252,27 @@ body,
   filter: grayscale(1);
 }
 
+/* Datalink lines (issue L) — always-on animated dashed line from every
+   Drone to its nearest Relay (Tower or Base Station). The dash pattern and
+   "marching ants" travel-toward-the-Relay motion are pure CSS: a fixed
+   stroke-dasharray plus a decreasing stroke-dashoffset keyframe. Positions
+   on the underlying Polyline are ordered Drone-first, Relay-second (see
+   `DatalinkLine.tsx`), so a *decreasing* offset reads as dashes moving
+   from the Drone toward the Relay, not the reverse. */
+.datalink-line {
+  stroke-dasharray: 10 8;
+  animation: datalink-marching-ants 0.6s linear infinite;
+}
+
+@keyframes datalink-marching-ants {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: -18;
+  }
+}
+
 /* Ground Truth View toggle (issue D) — sits alongside the Simulation Clock panel. */
 .ground-truth-toggle {
   display: flex;

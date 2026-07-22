@@ -48,6 +48,14 @@ _Avoid_: Drone type (ambiguous with `DroneType`), make/manufacturer
 A Drone's sensor payload: `'Optical'` or `'Thermal'`. A third independent axis alongside `DroneType` (behavior) and Drone Model (real-world identity) — any combination of the three can occur.
 _Avoid_: Sensor type, camera
 
+**Relay**:
+The generic role either a Tower or a Base Station plays as a Datalink endpoint — the union of `World.towers` and `World.baseStations` (4 fixed assets in the default `world.json`). A Tower/Base Station is still identified and rendered as itself everywhere else; "Relay" only names this cross-cutting role when talking about which fixed asset a Drone's Datalink line points to.
+_Avoid_: Node, ground station (use "Relay" to keep it distinct from "Base Station")
+
+**Datalink**:
+The always-visible, animated (marching-ants) line from a Drone to its nearest Relay, by straight-line distance, recomputed continuously as the Drone patrols. Distinct from a Base Station's docking/recharge role — a Datalink line can point to either a Tower or a Base Station, whichever is closer.
+_Avoid_: Link, connection line (use "Datalink" for this specific always-on nearest-Relay line)
+
 ### Events & Detection
 
 **Event**:

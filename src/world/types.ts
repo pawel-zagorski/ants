@@ -73,6 +73,15 @@ export interface Drone {
 export type Asset = Tower | BaseStation | Drone
 
 /**
+ * The generic Datalink endpoint role either a Tower or a Base Station plays
+ * (see `CONTEXT.md`'s **Relay** entry) — the union of `World.towers` and
+ * `World.baseStations`, i.e. every fixed asset a Drone's Datalink line
+ * (issue L) can point to. A Tower/BaseStation is still rendered/identified
+ * as itself everywhere else; "Relay" only names this cross-cutting role.
+ */
+export type Relay = Tower | BaseStation
+
+/**
  * The fixed sensor network roster for a simulation run: the map area, its
  * Towers, Base Stations, and Drones (ADR-0002). Does not change once a
  * Scenario starts.
