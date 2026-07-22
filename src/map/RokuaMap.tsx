@@ -6,6 +6,7 @@ import { AssetMarkers } from './AssetMarkers'
 import { AssetPanel } from './AssetPanel'
 import { ConfirmedShapeLayer } from './ConfirmedShapeLayer'
 import { DatalinkLines } from './DatalinkLines'
+import { DroneFlightPaths } from './DroneFlightPaths'
 import { EventMarkers } from './EventMarkers'
 import { EventPanel } from './EventPanel'
 import { FireFootprintLayer } from './FireFootprintLayer'
@@ -141,6 +142,7 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
     <MapContainer bounds={toLeafletBounds(world.bounds)} className="rokua-map">
       <TileLayer url={OSM_TILE_URL} attribution={OSM_ATTRIBUTION} />
       <DatalinkLines world={liveWorld} droneActivity={clock.simulationState.droneActivity} />
+      <DroneFlightPaths simulationState={clock.simulationState} />
       <AssetMarkers
         world={liveWorld}
         droneActivity={clock.simulationState.droneActivity}

@@ -803,6 +803,47 @@ describe('RokuaMap Return Envelope overlay (issue K)', () => {
   })
 })
 
+describe('RokuaMap drone flight paths (drone-flight-viz)', () => {
+  const eventPosition = { lat: 64.5, lng: 26.25 }
+  const fallenTreeScenario: Scenario = {
+    events: [{ id: 'tree-1', type: 'FallenTree', position: eventPosition, spawnAtSimSeconds: 0 }],
+    wind: TEST_WIND,
+  }
+  const fireWithinTowerRange: Scenario = {
+    events: [{ id: 'fire-1', type: 'Fire', position: { lat: 64.7, lng: 26.2 }, spawnAtSimSeconds: 0 }],
+    wind: TEST_WIND,
+  }
+
+  it('draws no trajectory or orbit while every Drone is just patrolling', () => {
+    render(<RokuaMap world={world} scenario={emptyScenario} />)
+
+    expect(document.querySelectorAll('path.drone-trajectory')).toHaveLength(0)
+    expect(document.querySelectorAll('path.drone-orbit')).toHaveLength(0)
+  })
+
+  it('draws a black trajectory line for a Drone sent to investigate an Event', () => {
+    render(<RokuaMap world={world} scenario={fallenTreeScenario} />)
+
+    expect(document.querySelectorAll('path.drone-trajectory')).toHaveLength(0)
+
+    fireEvent.click(document.querySelector('.event-icon-fallentree') as Element)
+    fireEvent.click(screen.getAllByRole('button', { name: 'Send' })[0])
+
+    expect(document.querySelectorAll('path.drone-trajectory')).toHaveLength(1)
+    expect(document.querySelectorAll('path.drone-orbit')).toHaveLength(0)
+  })
+
+  it('draws a black trajectory line for a Drone dispatched (traveling) to a Fire', () => {
+    render(<RokuaMap world={world} scenario={fireWithinTowerRange} />)
+
+    fireEvent.click(document.querySelector('.event-icon-fire') as Element)
+    fireEvent.click(screen.getAllByRole('button', { name: 'Send' })[0])
+
+    expect(document.querySelectorAll('path.drone-trajectory')).toHaveLength(1)
+    expect(document.querySelectorAll('path.drone-orbit')).toHaveLength(0)
+  })
+})
+
 describe('RokuaMap Lost Drone / One-Way Mission endurance exhaustion (issue W)', () => {
   const firePosition = { lat: 64.7, lng: 26.2 }
   // drone-1's home Base Station sits 300m from the Fire, and it patrols a

@@ -309,6 +309,21 @@ body,
   animation: none;
 }
 
+/* Drone flight visualizations (drone-flight-viz) — always-on, solid black,
+   for every Drone in a flying/orbiting state (see `DroneFlightPaths.tsx`):
+   `.drone-trajectory` is the straight line to a dispatched/traveling/
+   returning Drone's destination; `.drone-orbit` is the actual circle a
+   Drone flies while orbiting a Fire. All stroke/fill styling comes from
+   `DroneFlightPaths.tsx`'s `color`/`weight`/`opacity`/`fillOpacity` path
+   props (Leaflet presentation attributes, not CSS rules) — matching how
+   `DatalinkLine.tsx` documents this renderer's className/pathOptions
+   limitations — so these classes are only DOM query hooks. The single rule
+   here keeps both purely decorative (they never intercept marker clicks). */
+.drone-trajectory,
+.drone-orbit {
+  pointer-events: none;
+}
+
 /* EventPanel (issue O) — reuses `.asset-panel`'s look (see EventPanel.tsx's
    doc comment) but adds its own "Available Drones" list/Send-button
    section, which AssetPanel has no equivalent of. */
