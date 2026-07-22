@@ -21,5 +21,6 @@
       "position": { "lat": 64.42, "lng": 26.0 },
       "spawnAtSimSeconds": 30
     }
-  ]
+  ],
+  "wind": { "directionDegrees": 45, "speedMetersPerSecond": 2 }
 }

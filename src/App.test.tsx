@@ -29,6 +29,7 @@ const VALID_WORLD = {
 const VALID_SCENARIO = {
   startDateTimeIso: '2025-06-14T12:00:00Z',
   events: [{ id: 'event-1', type: 'FallenTree', position: { lat: 64.51, lng: 26.26 }, spawnAtSimSeconds: 30 }],
+  wind: { directionDegrees: 45, speedMetersPerSecond: 2 },
 }
 
 function stubFetchByUrl(responses: Record<string, unknown>) {

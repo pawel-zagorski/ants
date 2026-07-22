@@ -18,6 +18,7 @@ const validScenario = {
       durationSimSeconds: 600,
     },
   ],
+  wind: { directionDegrees: 225, speedMetersPerSecond: 8 },
 }
 
 describe('parseScenario', () => {
@@ -96,6 +97,7 @@ describe('parseScenario', () => {
         { id: 'event-1', type: 'Fire', position: { lat: 64.5, lng: 26.3 }, spawnAtSimSeconds: 0 },
         { id: 'event-1', type: 'FallenTree', position: { lat: 64.6, lng: 26.4 }, spawnAtSimSeconds: 10 },
       ],
+      wind: validScenario.wind,
     }
     expect(() => parseScenario(duplicateIds)).toThrow(/duplicate/i)
   })
@@ -105,6 +107,7 @@ describe('parseScenario', () => {
       events: [
         { id: 'event-1', type: 'Meteor', position: { lat: 64.5, lng: 26.3 }, spawnAtSimSeconds: -5 },
       ],
+      wind: validScenario.wind,
     }
     try {
       parseScenario(multipleIssues)
@@ -113,5 +116,46 @@ describe('parseScenario', () => {
       expect(error).toBeInstanceOf(ScenarioValidationError)
       expect((error as ScenarioValidationError).issues.length).toBeGreaterThanOrEqual(2)
     }
+  })
+
+  it('throws when wind is missing', () => {
+    const withoutWind = { events: validScenario.events }
+    expect(() => parseScenario(withoutWind)).toThrow(/wind/)
+  })
+
+  it('throws when wind is not an object', () => {
+    expect(() => parseScenario({ ...validScenario, wind: 'northerly' })).toThrow(/wind/)
+  })
+
+  it('throws when wind.directionDegrees is missing, non-numeric, or out of the 0-360 range', () => {
+    expect(() =>
+      parseScenario({ ...validScenario, wind: { speedMetersPerSecond: 8 } }),
+    ).toThrow(/directionDegrees/)
+    expect(() =>
+      parseScenario({ ...validScenario, wind: { directionDegrees: 'north', speedMetersPerSecond: 8 } }),
+    ).toThrow(/directionDegrees/)
+    expect(() =>
+      parseScenario({ ...validScenario, wind: { directionDegrees: -1, speedMetersPerSecond: 8 } }),
+    ).toThrow(/directionDegrees/)
+    expect(() =>
+      parseScenario({ ...validScenario, wind: { directionDegrees: 360.5, speedMetersPerSecond: 8 } }),
+    ).toThrow(/directionDegrees/)
+  })
+
+  it('accepts a wind.directionDegrees of exactly 0 or 360 (the boundary of the compass)', () => {
+    expect(() => parseScenario({ ...validScenario, wind: { directionDegrees: 0, speedMetersPerSecond: 8 } })).not.toThrow()
+    expect(() => parseScenario({ ...validScenario, wind: { directionDegrees: 360, speedMetersPerSecond: 8 } })).not.toThrow()
+  })
+
+  it('throws when wind.speedMetersPerSecond is missing, non-numeric, or negative', () => {
+    expect(() =>
+      parseScenario({ ...validScenario, wind: { directionDegrees: 225 } }),
+    ).toThrow(/speedMetersPerSecond/)
+    expect(() =>
+      parseScenario({ ...validScenario, wind: { directionDegrees: 225, speedMetersPerSecond: 'calm' } }),
+    ).toThrow(/speedMetersPerSecond/)
+    expect(() =>
+      parseScenario({ ...validScenario, wind: { directionDegrees: 225, speedMetersPerSecond: -1 } }),
+    ).toThrow(/speedMetersPerSecond/)
   })
 })

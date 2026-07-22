@@ -8,5 +8,6 @@
       "spawnAtSimSeconds": 30,
       "durationSimSeconds": 120
     }
-  ]
+  ],
+  "wind": { "directionDegrees": 225, "speedMetersPerSecond": 11 }
 }

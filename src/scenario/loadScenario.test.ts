@@ -25,6 +25,7 @@ describe('loadScenario', () => {
           spawnAtSimSeconds: 30,
         },
       ],
+      wind: { directionDegrees: 45, speedMetersPerSecond: 2 },
     }
 
     const scenario = await loadScenario('/scenario-quiet-day.json', fakeFetch({ ok: true, body: validBody }))

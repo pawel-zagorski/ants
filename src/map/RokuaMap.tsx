@@ -8,6 +8,7 @@ import { DatalinkLines } from './DatalinkLines'
 import { EventMarkers } from './EventMarkers'
 import { GroundTruthToggle } from './GroundTruthToggle'
 import { ReturnEnvelope } from './ReturnEnvelope'
+import { WindIndicator } from './WindIndicator'
 import { withDronePositions } from '../engine/liveWorld'
 import { droneTelemetryFor } from '../engine/telemetry'
 import { useSimulationClock } from '../engine/useSimulationClock'
@@ -56,7 +57,10 @@ function isDroneAsset(asset: Asset): asset is Drone {
  * by default) additionally reveals Undetected ones, faded/dashed. Every
  * Drone also always shows an animated Datalink line to its nearest Relay
  * (issue L, see `DatalinkLines`) — unlike the status panel, this layer is
- * not gated by selection.
+ * not gated by selection. Since `scenario` is only ever passed in once a
+ * Scenario has been loaded/selected, the Wind indicator (issue P, see
+ * `WindIndicator`) is always shown alongside the other bottom-left
+ * controls, with no separate loaded-check needed.
  */
 export function RokuaMap({ world, scenario }: RokuaMapProps) {
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null)
@@ -106,6 +110,7 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
       <div className="bottom-controls">
         <SimulationClockPanel clock={clock} startDateTimeIso={scenario.startDateTimeIso} />
         <GroundTruthToggle enabled={groundTruthViewEnabled} onChange={setGroundTruthViewEnabled} />
+        <WindIndicator wind={scenario.wind} />
       </div>
     </MapContainer>
   )
