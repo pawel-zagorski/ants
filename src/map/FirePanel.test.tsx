@@ -39,6 +39,7 @@ function patrolFixture(overrides: Partial<DronePatrolState> = {}): DronePatrolSt
     phaseOffsetRadians: 0,
     detectionRadiusMeters: 500,
     maxEnduranceSimSeconds: 7200,
+    cruiseSpeedMetersPerSecond: 10,
     position: towerDetectedFire.position,
     ...overrides,
   }

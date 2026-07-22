@@ -1,8 +1,9 @@
+import { withBase } from '../basePath'
 import { fetchAndParseJson } from '../validation/jsonValidation'
 import { parseWorld, WorldValidationError } from './schema'
 import type { World } from './types'
 
-const DEFAULT_WORLD_URL = '/world.json'
+const DEFAULT_WORLD_URL = withBase('world.json')
 
 /**
  * Fetches and validates the World roster (map bounds, Towers, Base Stations,

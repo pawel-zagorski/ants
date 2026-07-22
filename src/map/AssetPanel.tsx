@@ -6,6 +6,7 @@ import {
   formatRemainingEndurance,
   formatSpeedMetersPerSecond,
 } from './assetPanelFormatting'
+import { withBase } from '../basePath'
 import { baseStationCountsFor, droneTelemetryFor } from '../engine/telemetry'
 import type { FireRuntimeState, SimulationState } from '../engine/types'
 import { assetTypeLabel } from '../world/assetTypeLabel'
@@ -77,7 +78,7 @@ export function AssetPanel({ asset, simulationState, drones, onClose }: AssetPan
 
   return (
     <div className="asset-panel" role="dialog" aria-label={`${typeLabel} ${asset.id} status`}>
-      {isDrone && <img className="asset-panel-photo" src={(asset as Drone).imageUrl} alt={(asset as Drone).model} />}
+      {isDrone && <img className="asset-panel-photo" src={withBase((asset as Drone).imageUrl)} alt={(asset as Drone).model} />}
       <button type="button" className="asset-panel-close" onClick={onClose} aria-label="Close">
         &times;
       </button>

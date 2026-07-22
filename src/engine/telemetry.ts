@@ -150,14 +150,15 @@ export function droneTelemetryFor(
   }
 
   if (activity.mode === 'returningToBase') {
+    // A returning Drone is no longer investigating any Fire, so it carries
+    // neither `assignedFireId` nor `missionKind` (see the DroneActivity
+    // 'returningToBase' variant, which omits both).
     return {
       state: 'investigating',
       position: patrol.position,
       batteryPercent,
       remainingEnduranceSimSeconds,
       speedMetersPerSecond: patrol.cruiseSpeedMetersPerSecond,
-      assignedFireId: activity.assignedFireId,
-      missionKind: activity.missionKind,
     }
   }
 

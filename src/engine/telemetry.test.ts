@@ -16,6 +16,7 @@ const patrollingQuadrocopter: DronePatrolState = {
   phaseOffsetRadians: 0,
   detectionRadiusMeters: 500,
   maxEnduranceSimSeconds: MAX_ENDURANCE_SIM_SECONDS,
+  cruiseSpeedMetersPerSecond: 10,
   position: { lat: 64.5, lng: 26.2529 },
 }
 

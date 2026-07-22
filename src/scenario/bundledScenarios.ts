@@ -14,6 +14,8 @@
  * `bundledScenarios.integration.test.ts` for the geometric proof that each
  * one actually behaves as its description promises.
  */
+import { withBase } from '../basePath'
+
 export interface BundledScenarioListing {
   id: string
   name: string
@@ -26,18 +28,18 @@ export const BUNDLED_SCENARIOS: readonly BundledScenarioListing[] = [
     id: 'quiet-day',
     name: 'Quiet Day',
     description: 'A few harmless Fallen Tree reports, no Fire — most get noticed, one never does.',
-    url: '/scenario-quiet-day.json',
+    url: withBase('scenario-quiet-day.json'),
   },
   {
     id: 'wildfire-outbreak',
     name: 'Wildfire Outbreak',
     description: 'A Tower spots a Fire and keeps tracking it.',
-    url: '/scenario-wildfire-outbreak.json',
+    url: withBase('scenario-wildfire-outbreak.json'),
   },
   {
     id: 'hiker-intrusion',
     name: 'Hiker Intrusion',
     description: 'A Person Sighting stays invisible until a patrolling Drone finally passes by.',
-    url: '/scenario-hiker-intrusion.json',
+    url: withBase('scenario-hiker-intrusion.json'),
   },
 ]
