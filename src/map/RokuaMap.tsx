@@ -12,6 +12,7 @@ import { FireFootprintLayer } from './FireFootprintLayer'
 import { FireMarkers } from './FireMarkers'
 import { FirePanel } from './FirePanel'
 import { GroundTruthToggle } from './GroundTruthToggle'
+import { MapLegend } from './MapLegend'
 import { ReturnEnvelope } from './ReturnEnvelope'
 import { UncertaintyEllipseLayer } from './UncertaintyEllipseLayer'
 import { WindIndicator } from './WindIndicator'
@@ -223,6 +224,7 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
         <GroundTruthToggle enabled={groundTruthViewEnabled} onChange={setGroundTruthViewEnabled} />
         <WindIndicator wind={scenario.wind} />
       </div>
+      <MapLegend />
     </MapContainer>
   )
 }

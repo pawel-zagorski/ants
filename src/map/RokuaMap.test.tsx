@@ -134,6 +134,14 @@ describe('RokuaMap', () => {
   })
 })
 
+describe('RokuaMap Return Envelope legend', () => {
+  it('always shows the Return Envelope legend, even with nothing selected', () => {
+    render(<RokuaMap world={world} scenario={emptyScenario} />)
+
+    expect(screen.getByText(/Return Envelope/i)).toBeInTheDocument()
+  })
+})
+
 describe('RokuaMap Wind indicator (issue P)', () => {
   it("shows the loaded Scenario's own wind speed label, not a hardcoded default", () => {
     const scenarioWithDistinctWind: Scenario = {
