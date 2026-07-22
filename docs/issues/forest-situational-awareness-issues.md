@@ -191,7 +191,7 @@ G
 
 ---
 
-## [ ] I — Drone spec data model + real-world fleet identity
+## [x] I — Drone spec data model + real-world fleet identity
 
 ### Parent
 
@@ -218,11 +218,11 @@ Add `CONTEXT.md` glossary entries for **Payload** and **Drone Model** (see wordi
 
 ### Acceptance criteria
 
-- [ ] `Drone` type carries `model`, `payload`, `maxEnduranceSimSeconds`, `cruiseSpeedMetersPerSecond`, `datalinkRangeMeters`, `imageUrl`; schema validation rejects a `world.json` missing any of them or with an invalid `payload` value
-- [ ] Default `world.json`'s 4 drones match the fleet mapping table exactly (2× FlyEye/Thermal, 1× DJI Mavic 4 Pro/Optical, 1× DJI Matrice 4T/Thermal), with every pre-existing field unchanged
-- [ ] `bundledScenarios.integration.test.ts` and all other existing tests still pass unmodified (proves the fleet identity refresh didn't disturb tuned scenario behavior)
-- [ ] A Drone's `remainingEnduranceSimSeconds`/`batteryPercent` telemetry now drains at a rate derived from its own `maxEnduranceSimSeconds` (unit test: two Drones with different `maxEnduranceSimSeconds` values have different `batteryPercentAt` results at the same `elapsedSimSeconds`)
-- [ ] `CONTEXT.md` has new **Payload** and **Drone Model** entries
+- [x] `Drone` type carries `model`, `payload`, `maxEnduranceSimSeconds`, `cruiseSpeedMetersPerSecond`, `datalinkRangeMeters`, `imageUrl`; schema validation rejects a `world.json` missing any of them or with an invalid `payload` value
+- [x] Default `world.json`'s 4 drones match the fleet mapping table exactly (2× FlyEye/Thermal, 1× DJI Mavic 4 Pro/Optical, 1× DJI Matrice 4T/Thermal), with every pre-existing field unchanged
+- [x] `bundledScenarios.integration.test.ts` and all other existing tests still pass unmodified (proves the fleet identity refresh didn't disturb tuned scenario behavior)
+- [x] A Drone's `remainingEnduranceSimSeconds`/`batteryPercent` telemetry now drains at a rate derived from its own `maxEnduranceSimSeconds` (unit test: two Drones with different `maxEnduranceSimSeconds` values have different `batteryPercentAt` results at the same `elapsedSimSeconds`)
+- [x] `CONTEXT.md` has new **Payload** and **Drone Model** entries
 
 ### Blocked by
 

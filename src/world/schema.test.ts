@@ -16,6 +16,12 @@ const validWorld = {
       type: 'Quadrocopter',
       position: { lat: 64.451, lng: 26.301 },
       homeBaseStationId: 'base-1',
+      model: 'DJI Mavic 4 Pro',
+      payload: 'Optical',
+      maxEnduranceSimSeconds: 3060,
+      cruiseSpeedMetersPerSecond: 10,
+      datalinkRangeMeters: 30000,
+      imageUrl: '/img/dji_mavic_4_pro.jpeg',
     },
   ],
 }
@@ -81,10 +87,7 @@ describe('parseWorld', () => {
       ...validWorld,
       drones: [
         {
-          id: 'drone-1',
-          type: 'Quadrocopter',
-          position: { lat: 64.451, lng: 26.301 },
-          homeBaseStationId: 'base-1',
+          ...validWorld.drones[0],
           patrolRadiusMeters: 400,
           patrolSpeedMetersPerSecond: 10,
         },
@@ -96,29 +99,13 @@ describe('parseWorld', () => {
   it('throws when a Drone patrol parameter override is not a positive number', () => {
     const badPatrolRadius = {
       ...validWorld,
-      drones: [
-        {
-          id: 'drone-1',
-          type: 'Quadrocopter',
-          position: { lat: 64.451, lng: 26.301 },
-          homeBaseStationId: 'base-1',
-          patrolRadiusMeters: -5,
-        },
-      ],
+      drones: [{ ...validWorld.drones[0], patrolRadiusMeters: -5 }],
     }
     expect(() => parseWorld(badPatrolRadius)).toThrow(/patrolRadiusMeters/)
 
     const badPatrolSpeed = {
       ...validWorld,
-      drones: [
-        {
-          id: 'drone-1',
-          type: 'Quadrocopter',
-          position: { lat: 64.451, lng: 26.301 },
-          homeBaseStationId: 'base-1',
-          patrolSpeedMetersPerSecond: 'fast',
-        },
-      ],
+      drones: [{ ...validWorld.drones[0], patrolSpeedMetersPerSecond: 'fast' }],
     }
     expect(() => parseWorld(badPatrolSpeed)).toThrow(/patrolSpeedMetersPerSecond/)
   })
@@ -126,15 +113,7 @@ describe('parseWorld', () => {
   it('accepts a Drone with an optional detectionRadiusMeters override', () => {
     const withDetectionRadius = {
       ...validWorld,
-      drones: [
-        {
-          id: 'drone-1',
-          type: 'Quadrocopter',
-          position: { lat: 64.451, lng: 26.301 },
-          homeBaseStationId: 'base-1',
-          detectionRadiusMeters: 750,
-        },
-      ],
+      drones: [{ ...validWorld.drones[0], detectionRadiusMeters: 750 }],
     }
     expect(parseWorld(withDetectionRadius)).toEqual(withDetectionRadius)
   })
@@ -142,30 +121,43 @@ describe('parseWorld', () => {
   it('throws when a Drone detectionRadiusMeters override is not a positive number', () => {
     const badDetectionRadius = {
       ...validWorld,
-      drones: [
-        {
-          id: 'drone-1',
-          type: 'Quadrocopter',
-          position: { lat: 64.451, lng: 26.301 },
-          homeBaseStationId: 'base-1',
-          detectionRadiusMeters: 0,
-        },
-      ],
+      drones: [{ ...validWorld.drones[0], detectionRadiusMeters: 0 }],
     }
     expect(() => parseWorld(badDetectionRadius)).toThrow(/detectionRadiusMeters/)
+  })
+
+  /** Returns a shallow copy of `validWorld.drones[0]` with `field` omitted, for "missing required field" test cases. */
+  function droneMissingField(field: keyof typeof validWorld.drones[0]): Record<string, unknown> {
+    return Object.fromEntries(Object.entries(validWorld.drones[0]).filter(([key]) => key !== field))
+  }
+
+  it('throws when a Drone is missing model, payload, maxEnduranceSimSeconds, cruiseSpeedMetersPerSecond, datalinkRangeMeters, or imageUrl (issue I)', () => {
+    expect(() => parseWorld({ ...validWorld, drones: [droneMissingField('model')] })).toThrow(/model/)
+    expect(() => parseWorld({ ...validWorld, drones: [droneMissingField('payload')] })).toThrow(/payload/)
+    expect(() => parseWorld({ ...validWorld, drones: [droneMissingField('maxEnduranceSimSeconds')] })).toThrow(
+      /maxEnduranceSimSeconds/,
+    )
+    expect(() => parseWorld({ ...validWorld, drones: [droneMissingField('cruiseSpeedMetersPerSecond')] })).toThrow(
+      /cruiseSpeedMetersPerSecond/,
+    )
+    expect(() => parseWorld({ ...validWorld, drones: [droneMissingField('datalinkRangeMeters')] })).toThrow(
+      /datalinkRangeMeters/,
+    )
+    expect(() => parseWorld({ ...validWorld, drones: [droneMissingField('imageUrl')] })).toThrow(/imageUrl/)
+  })
+
+  it('throws when a Drone has an invalid payload value', () => {
+    const badPayload = {
+      ...validWorld,
+      drones: [{ ...validWorld.drones[0], payload: 'Infrared' }],
+    }
+    expect(() => parseWorld(badPayload)).toThrow(/payload/)
   })
 
   it('throws when a Drone references a homeBaseStationId that does not exist', () => {
     const danglingReference = {
       ...validWorld,
-      drones: [
-        {
-          id: 'drone-1',
-          type: 'Quadrocopter',
-          position: { lat: 64.451, lng: 26.301 },
-          homeBaseStationId: 'base-does-not-exist',
-        },
-      ],
+      drones: [{ ...validWorld.drones[0], homeBaseStationId: 'base-does-not-exist' }],
     }
     expect(() => parseWorld(danglingReference)).toThrow(/homeBaseStationId/)
   })

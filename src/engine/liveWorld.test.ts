@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { withDronePositions } from './liveWorld'
 import { initializeSimulationState, advanceSimulation } from './advanceSimulation'
-import { createWorldFixture } from '../test/worldFixtures'
+import { createWorldFixture, droneSpecFixture } from '../test/worldFixtures'
 import type { Scenario } from '../scenario/types'
 import type { World } from '../world/types'
 
@@ -15,6 +15,7 @@ const world: World = createWorldFixture({
       type: 'Quadrocopter',
       position: { lat: 64.5, lng: 26.25 },
       homeBaseStationId: 'base-1',
+      ...droneSpecFixture,
     },
   ],
 })

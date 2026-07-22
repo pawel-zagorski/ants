@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { advanceSimulation, initializeSimulationState } from './advanceSimulation'
 import { INVESTIGATION_DURATION_SIM_SECONDS } from './dispatch'
 import { haversineDistanceMeters } from '../test/haversineDistanceMeters'
-import { createWorldFixture } from '../test/worldFixtures'
+import { createWorldFixture, droneSpecFixture } from '../test/worldFixtures'
 import type { Scenario } from '../scenario/types'
 import type { World } from '../world/types'
 import type { SimulationState } from './types'
@@ -14,12 +14,14 @@ const world: World = createWorldFixture({
       type: 'Quadrocopter',
       position: { lat: 64.5, lng: 26.25 },
       homeBaseStationId: 'base-1',
+      ...droneSpecFixture,
     },
     {
       id: 'fixed-wing-1',
       type: 'FixedWingDrone',
       position: { lat: 64.5, lng: 26.25 },
       homeBaseStationId: 'base-1',
+      ...droneSpecFixture,
     },
   ],
 })
@@ -53,6 +55,7 @@ describe('initializeSimulationState patrol parameter overrides', () => {
           type: 'Quadrocopter',
           position: { lat: 64.5, lng: 26.25 },
           homeBaseStationId: 'base-1',
+          ...droneSpecFixture,
           patrolRadiusMeters: 999,
           patrolSpeedMetersPerSecond: 3,
         },
@@ -294,6 +297,7 @@ describe('Drone Detection of any Event type', () => {
           type: 'Quadrocopter',
           position: { lat: 64.5, lng: 26.25 },
           homeBaseStationId: 'base-1',
+          ...droneSpecFixture,
           patrolRadiusMeters: 1,
           patrolSpeedMetersPerSecond: 0,
           detectionRadiusMeters,
@@ -340,6 +344,7 @@ describe('Detection is monotonic (sticky status)', () => {
           type: 'Quadrocopter',
           position: { lat: 64.5, lng: 26.25 },
           homeBaseStationId: 'base-1',
+          ...droneSpecFixture,
           patrolRadiusMeters: 250,
           detectionRadiusMeters: 50,
         },
@@ -377,6 +382,7 @@ describe('Detection is monotonic (sticky status)', () => {
           type: 'Quadrocopter',
           position: { lat: 64.5, lng: 26.25 },
           homeBaseStationId: 'base-1',
+          ...droneSpecFixture,
           patrolRadiusMeters: 1,
           patrolSpeedMetersPerSecond: 0,
           detectionRadiusMeters: 10,
@@ -417,6 +423,7 @@ describe('Detection reproducibility', () => {
           type: 'Quadrocopter',
           position: { lat: 64.5, lng: 26.25 },
           homeBaseStationId: 'base-1',
+          ...droneSpecFixture,
           patrolRadiusMeters: 250,
           detectionRadiusMeters: 300,
         },
@@ -479,6 +486,7 @@ describe('Drone dispatch/investigate behavior (issue F)', () => {
           type: 'Quadrocopter',
           position: { lat: 64.65, lng: 26.25 },
           homeBaseStationId: 'base-far',
+          ...droneSpecFixture,
           patrolRadiusMeters: 1,
           patrolSpeedMetersPerSecond: 0,
         },
@@ -487,6 +495,7 @@ describe('Drone dispatch/investigate behavior (issue F)', () => {
           type: 'Quadrocopter',
           position: { lat: 64.5505, lng: 26.25 },
           homeBaseStationId: 'base-near',
+          ...droneSpecFixture,
           patrolRadiusMeters: 1,
           patrolSpeedMetersPerSecond: 0,
         },
@@ -532,6 +541,7 @@ describe('Drone dispatch/investigate behavior (issue F)', () => {
           type: 'FixedWingDrone',
           position: { lat: 64.5505, lng: 26.25 },
           homeBaseStationId: 'base-near',
+          ...droneSpecFixture,
           patrolRadiusMeters: 1,
           patrolSpeedMetersPerSecond: 0,
         },
@@ -567,6 +577,7 @@ describe('Drone dispatch/investigate behavior (issue F)', () => {
       type: 'Quadrocopter',
       position: { lat: 64.5505, lng: 26.25 },
       homeBaseStationId: 'base-near',
+      ...droneSpecFixture,
       patrolRadiusMeters: 250,
       patrolSpeedMetersPerSecond: 8,
     }
@@ -601,6 +612,7 @@ describe('Drone dispatch/investigate behavior (issue F)', () => {
           type: 'Quadrocopter',
           position: { lat: 64.5505, lng: 26.25 },
           homeBaseStationId: 'base-1',
+          ...droneSpecFixture,
           patrolRadiusMeters: 1,
           patrolSpeedMetersPerSecond: 0,
         },
@@ -637,6 +649,7 @@ describe('Drone dispatch/investigate behavior (issue F)', () => {
           type: 'Quadrocopter',
           position: earlierEventPosition,
           homeBaseStationId: 'base-1',
+          ...droneSpecFixture,
           patrolRadiusMeters: 1,
           patrolSpeedMetersPerSecond: 0,
         },
@@ -677,6 +690,7 @@ describe('Drone dispatch/investigate behavior (issue F)', () => {
           type: 'Quadrocopter',
           position: { lat: 64.55, lng: 26.2503 },
           homeBaseStationId: 'base-1',
+          ...droneSpecFixture,
           patrolRadiusMeters: 1,
           patrolSpeedMetersPerSecond: 0,
         },

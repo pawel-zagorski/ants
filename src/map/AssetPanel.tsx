@@ -57,7 +57,10 @@ export function AssetPanel({ asset, simulationState, drones, onClose }: AssetPan
   const isDrone = asset.type === 'Quadrocopter' || asset.type === 'FixedWingDrone'
   const patrol = isDrone ? dronePatrol[asset.id] : undefined
   const activity = isDrone ? droneActivity[asset.id] : undefined
-  const droneTelemetry = patrol && activity ? droneTelemetryFor(patrol, activity, elapsedSimSeconds) : undefined
+  const droneTelemetry =
+    patrol && activity
+      ? droneTelemetryFor(patrol, activity, elapsedSimSeconds, (asset as Drone).maxEnduranceSimSeconds)
+      : undefined
 
   const baseStationCounts = asset.type === 'BaseStation' ? baseStationCountsFor(asset.id, drones, droneActivity) : undefined
 

@@ -1,7 +1,8 @@
 import { collectLatLngIssues, collectStringFieldIssues, isFiniteNumber, isPlainObject } from '../validation/jsonValidation'
-import type { Asset, BaseStation, Drone, DroneType, Tower, World } from './types'
+import type { Asset, BaseStation, Drone, DronePayload, DroneType, Tower, World } from './types'
 
 const DRONE_TYPES: readonly DroneType[] = ['Quadrocopter', 'FixedWingDrone']
+const DRONE_PAYLOADS: readonly DronePayload[] = ['Optical', 'Thermal']
 
 /**
  * Thrown when `world.json` content does not match the documented schema.
@@ -86,6 +87,31 @@ function collectOptionalPositiveNumberIssues(value: unknown, path: string, issue
   }
 }
 
+/** Validates a required positive-number field — unlike {@link collectOptionalPositiveNumberIssues}, missing also fails. */
+function collectRequiredPositiveNumberIssues(value: unknown, path: string, issues: string[]): void {
+  if (!isFiniteNumber(value) || value <= 0) {
+    issues.push(`${path} must be a positive finite number`)
+  }
+}
+
+/**
+ * Validates a Drone's issue I fleet-identity fields (`model`/`payload`/
+ * `maxEnduranceSimSeconds`/`cruiseSpeedMetersPerSecond`/
+ * `datalinkRangeMeters`/`imageUrl`) — all required, purely additive
+ * alongside the pre-existing fields {@link collectDroneIssues} already
+ * checks.
+ */
+function collectDroneSpecIssues(drone: Record<string, unknown>, path: string, issues: string[]): void {
+  collectStringFieldIssues(drone.model, `${path}.model`, issues)
+  if (!DRONE_PAYLOADS.includes(drone.payload as DronePayload)) {
+    issues.push(`${path}.payload must be one of ${DRONE_PAYLOADS.join(', ')}`)
+  }
+  collectRequiredPositiveNumberIssues(drone.maxEnduranceSimSeconds, `${path}.maxEnduranceSimSeconds`, issues)
+  collectRequiredPositiveNumberIssues(drone.cruiseSpeedMetersPerSecond, `${path}.cruiseSpeedMetersPerSecond`, issues)
+  collectRequiredPositiveNumberIssues(drone.datalinkRangeMeters, `${path}.datalinkRangeMeters`, issues)
+  collectStringFieldIssues(drone.imageUrl, `${path}.imageUrl`, issues)
+}
+
 function collectDroneIssues(value: unknown, path: string, issues: string[]): void {
   const drone = collectCommonAssetIssues(value, path, issues)
   if (!drone) return
@@ -96,6 +122,7 @@ function collectDroneIssues(value: unknown, path: string, issues: string[]): voi
   collectOptionalPositiveNumberIssues(drone.patrolRadiusMeters, `${path}.patrolRadiusMeters`, issues)
   collectOptionalPositiveNumberIssues(drone.patrolSpeedMetersPerSecond, `${path}.patrolSpeedMetersPerSecond`, issues)
   collectOptionalPositiveNumberIssues(drone.detectionRadiusMeters, `${path}.detectionRadiusMeters`, issues)
+  collectDroneSpecIssues(drone, path, issues)
 }
 
 /** Validates each element of an array field with a per-item validator, or records that it isn't an array. */

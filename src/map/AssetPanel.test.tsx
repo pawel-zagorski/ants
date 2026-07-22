@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { AssetPanel } from './AssetPanel'
 import type { DroneActivityState, DronePatrolState, EventRuntimeState, SimulationState } from '../engine/types'
+import { droneSpecFixture } from '../test/worldFixtures'
 import type { BaseStation, Drone, Tower } from '../world/types'
 
 const tower: Tower = {
@@ -16,6 +17,7 @@ const drone: Drone = {
   type: 'Quadrocopter',
   position: { lat: 64.502, lng: 26.252 },
   homeBaseStationId: 'base-1',
+  ...droneSpecFixture,
 }
 
 const fixedWingDrone: Drone = {
@@ -23,6 +25,7 @@ const fixedWingDrone: Drone = {
   type: 'FixedWingDrone',
   position: { lat: 64.51, lng: 26.24 },
   homeBaseStationId: 'base-1',
+  ...droneSpecFixture,
 }
 
 const baseStation: BaseStation = {

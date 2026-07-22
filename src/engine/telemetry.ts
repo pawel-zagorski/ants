@@ -6,29 +6,29 @@ import type { DroneActivityState, DronePatrolState } from './types'
 import type { Drone } from '../world/types'
 
 /**
- * A Drone's fixed "battery capacity" for the cosmetic endurance model below
- * (issue G design guidance): 7200 simulated seconds = 2 simulated hours.
+ * The cosmetic endurance model below (issue G design guidance, updated by
+ * issue I to drain at a per-Drone rate instead of one shared constant)
+ * takes each Drone's own `maxEnduranceSimSeconds` (from `world.json`, e.g.
+ * 7200 simulated seconds = 2 simulated hours) as an explicit parameter.
  * There is no real energy-consumption simulation anywhere in this engine,
  * and issue F deliberately kept dispatch eligibility free of battery
- * gating ("available" = "not investigating", full stop) — this constant
- * and {@link remainingEnduranceSimSecondsAt}/{@link batteryPercentAt} exist
+ * gating ("available" = "not investigating", full stop) —
+ * {@link remainingEnduranceSimSecondsAt}/{@link batteryPercentAt} exist
  * *only* to give the Drone status panel something plausible to display.
- * They are a closed-form function of `elapsedSimSeconds` alone (every
- * Drone "starts full" at `elapsedSimSeconds = 0` and drains at the same
- * fixed rate, regardless of patrol/investigate activity) and must never be
- * read by `advanceSimulation.ts`/`dispatch.ts` — doing so would silently
+ * They are a closed-form function of `elapsedSimSeconds` and
+ * `maxEnduranceSimSeconds` alone (every Drone "starts full" at
+ * `elapsedSimSeconds = 0` and drains at its own fixed rate, regardless of
+ * patrol/investigate activity) and must never be read by
+ * `advanceSimulation.ts`/`dispatch.ts` — doing so would silently
  * reintroduce battery-gated behavior that issue F explicitly deferred.
  */
-export const DRONE_MAX_ENDURANCE_SIM_SECONDS = 7200
-
-/** See {@link DRONE_MAX_ENDURANCE_SIM_SECONDS} — display-only, not behavior-gating. */
-export function remainingEnduranceSimSecondsAt(elapsedSimSeconds: number): number {
-  return Math.max(0, DRONE_MAX_ENDURANCE_SIM_SECONDS - elapsedSimSeconds)
+export function remainingEnduranceSimSecondsAt(elapsedSimSeconds: number, maxEnduranceSimSeconds: number): number {
+  return Math.max(0, maxEnduranceSimSeconds - elapsedSimSeconds)
 }
 
-/** See {@link DRONE_MAX_ENDURANCE_SIM_SECONDS} — display-only, not behavior-gating. */
-export function batteryPercentAt(elapsedSimSeconds: number): number {
-  return (remainingEnduranceSimSecondsAt(elapsedSimSeconds) / DRONE_MAX_ENDURANCE_SIM_SECONDS) * 100
+/** See {@link remainingEnduranceSimSecondsAt} — display-only, not behavior-gating. */
+export function batteryPercentAt(elapsedSimSeconds: number, maxEnduranceSimSeconds: number): number {
+  return (remainingEnduranceSimSecondsAt(elapsedSimSeconds, maxEnduranceSimSeconds) / maxEnduranceSimSeconds) * 100
 }
 
 /**
@@ -71,14 +71,18 @@ export interface DroneTelemetry {
  * investigate hover/circle position — see `advanceSimulation.ts`'s
  * `positionForActivity`); while `'patrolling'`, they come from the patrol
  * loop's tangential motion at the current angle ({@link patrolAngleRadiansAt}).
+ * `maxEnduranceSimSeconds` is this specific Drone's own value (issue I —
+ * `Drone.maxEnduranceSimSeconds`), not a shared constant, so two Drones
+ * with different max endurances drain at different rates.
  */
 export function droneTelemetryFor(
   patrol: DronePatrolState,
   activity: DroneActivityState,
   elapsedSimSeconds: number,
+  maxEnduranceSimSeconds: number,
 ): DroneTelemetry {
-  const batteryPercent = batteryPercentAt(elapsedSimSeconds)
-  const remainingEnduranceSimSeconds = remainingEnduranceSimSecondsAt(elapsedSimSeconds)
+  const batteryPercent = batteryPercentAt(elapsedSimSeconds, maxEnduranceSimSeconds)
+  const remainingEnduranceSimSeconds = remainingEnduranceSimSecondsAt(elapsedSimSeconds, maxEnduranceSimSeconds)
 
   if (activity.mode === 'investigating') {
     const secondsSinceInvestigationStarted = elapsedSimSeconds - activity.investigationStartedAtSimSeconds
