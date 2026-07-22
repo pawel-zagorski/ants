@@ -1,0 +1,5 @@
+# Remaining endurance becomes a real gate, scoped to Fire dispatch only
+
+`telemetry.ts` has stood on the explicit invariant that `remainingEnduranceSimSeconds` is display-only and must never be read by the engine for gating — it drains linearly regardless of activity and was never meant to end a Drone's life. Fire's Bingo Range / One-Way Mission mechanic needs the opposite: real endurance must decide which Drones can safely round-trip to a Fire, which can only get there one-way, and must actually terminate a One-Way Mission Drone into a Lost state when it hits zero.
+
+We chose to reverse the invariant narrowly: only the Fire-dispatch decision and One-Way Mission termination read/act on endurance. Ordinary patrol, auto-detection (still automatic for the underlying Detection itself, just not the dispatch), and Person Sighting/Fallen Tree dispatch are untouched — endurance stays cosmetic there. A fully general patrol-drain/return-to-base/recharge simulation was raised and explicitly deferred as a separate future effort during design, rather than folded into this change.
