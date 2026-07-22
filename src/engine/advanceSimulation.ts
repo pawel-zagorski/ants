@@ -1,6 +1,8 @@
 import { distanceMetersBetween, interpolateLatLng, pointOnCircle, tangentialSpeedMetersPerSecond } from '../map/geo'
 import type { LatLng } from '../map/geo'
 import { INVESTIGATION_DURATION_SIM_SECONDS, investigatePositionFor } from './dispatch'
+import { appendLogEntry } from './eventLog'
+import type { EventLogEntry } from './eventLog'
 import { fireFootprintHexCells, fireOrbitRadiusMetersAt } from './growthEllipse'
 import { orbitLapDurationSimSeconds, orbitPositionFor } from './orbit'
 import { remainingEnduranceSimSecondsAt } from './telemetry'
@@ -15,6 +17,36 @@ import type {
   SimulationState,
   TowerDetectionState,
 } from './types'
+
+/**
+ * A yet-to-be-identified {@link EventLogEntry} — everything the engine knows
+ * about a transition at the moment it emits it, minus the deterministic `id`.
+ * The `id` can only be assigned once every draft produced by a single
+ * `advanceSimulation`/`withManual*` call is known, since it embeds that
+ * draft's index among them (see {@link finalizeLogDrafts}) — so the emission
+ * points below accumulate drafts and the top-level call stamps ids last.
+ */
+type LogEntryDraft = Omit<EventLogEntry, 'id'>
+
+/**
+ * Turns the ordered {@link LogEntryDraft}s produced during a single call into
+ * fully-identified {@link EventLogEntry}s, assigning each the ADR-0008
+ * deterministic id `${kind}:${droneId ?? eventId ?? fireId ?? 'x'}:${simSeconds}:${i}`
+ * where `i` is its index among the drafts from THAT call — never `Math.random`
+ * or `Date.now`, so replaying the same state along the same time points yields
+ * byte-identical ids (and therefore logs).
+ */
+function finalizeLogDrafts(drafts: readonly LogEntryDraft[]): EventLogEntry[] {
+  return drafts.map((draft, i) => ({
+    id: `${draft.kind}:${draft.droneId ?? draft.eventId ?? draft.fireId ?? 'x'}:${draft.simSeconds}:${i}`,
+    ...draft,
+  }))
+}
+
+/** Appends every finalized {@link LogEntryDraft} to `log` in order, capped via {@link appendLogEntry}. */
+function logWithDraftsAppended(log: readonly EventLogEntry[], drafts: readonly LogEntryDraft[]): EventLogEntry[] {
+  return finalizeLogDrafts(drafts).reduce<EventLogEntry[]>((acc, entry) => appendLogEntry(acc, entry), [...log])
+}
 
 /**
  * Per-Drone-type patrol loop parameters (ADR/PRD design guidance): a
@@ -482,44 +514,98 @@ function patrolLinearSpeedMetersPerSecond(patrol: DronePatrolState): number {
  * assigned Fire's (fixed, never-moving) ignition point for that frozen
  * position.
  */
+/**
+ * The outcome of a single {@link activityAfterOneTransition} hop: the Drone's
+ * next `DroneActivityState`, plus (when that hop is an operator-observable
+ * transition) the {@link LogEntryDraft} it emits. `entry` is left undefined
+ * for a no-op hop (still-in-progress, terminal-and-unchanged, or the
+ * already-`'patrolling'` default) and for the purely-defensive Fire-missing
+ * fallback, neither of which the operator would see in the Event Log.
+ */
+interface OneTransitionResult {
+  activity: DroneActivityState
+  entry?: LogEntryDraft
+}
+
+/** The shared Drone-identity fields every Drone-lifecycle {@link LogEntryDraft} carries. */
+function droneEntryFields(droneId: string, patrol: DronePatrolState): { droneId: string; droneType: DroneType } {
+  return { droneId, droneType: patrol.droneType }
+}
+
 function activityAfterInvestigationExpiry(
+  droneId: string,
   incomingActivity: DroneActivityState | undefined,
   elapsedSimSeconds: number,
   patrol: DronePatrolState,
   incomingFires: Record<string, FireRuntimeState>,
-): DroneActivityState {
-  const next = activityAfterOneTransition(incomingActivity, elapsedSimSeconds, patrol, incomingFires)
+): { activity: DroneActivityState; entries: LogEntryDraft[] } {
+  const entries: LogEntryDraft[] = []
+  let current = incomingActivity
 
   // A large time jump can skip multiple phases in one tick (e.g. travelling →
   // arrived → orbit complete → returned). Keep applying transitions until the
-  // state stabilises (same reference = no change, or a terminal state).
-  if (next !== incomingActivity && next.mode !== 'patrolling' && next.mode !== 'lost' && next.mode !== 'grounded') {
-    return activityAfterInvestigationExpiry(next, elapsedSimSeconds, patrol, incomingFires)
-  }
+  // state stabilises (same reference = no change, or a terminal state),
+  // accumulating a Log Entry for every intermediate hop (ADR-0008) so none is
+  // missed even when several collapse into a single `advanceSimulation` call.
+  for (;;) {
+    const { activity: next, entry } = activityAfterOneTransition(droneId, current, elapsedSimSeconds, patrol, incomingFires)
+    if (entry) entries.push(entry)
 
-  return next
+    if (next !== current && next.mode !== 'patrolling' && next.mode !== 'lost' && next.mode !== 'grounded') {
+      current = next
+      continue
+    }
+
+    return { activity: next, entries }
+  }
 }
 
 function activityAfterOneTransition(
+  droneId: string,
   incomingActivity: DroneActivityState | undefined,
   elapsedSimSeconds: number,
   patrol: DronePatrolState,
   incomingFires: Record<string, FireRuntimeState>,
-): DroneActivityState {
+): OneTransitionResult {
   if (!incomingActivity || incomingActivity.mode === 'patrolling') {
-    return { mode: 'patrolling' }
+    return { activity: { mode: 'patrolling' } }
   }
 
   if (incomingActivity.mode === 'lost') {
-    return incomingActivity
+    return { activity: incomingActivity }
   }
 
   if (incomingActivity.mode === 'grounded') {
-    return incomingActivity
+    return { activity: incomingActivity }
   }
 
   if (incomingActivity.mode === 'returningToStation') {
-    return activityAfterManualReturnTransition(incomingActivity, elapsedSimSeconds, patrol)
+    const activity = activityAfterManualReturnTransition(incomingActivity, elapsedSimSeconds, patrol)
+    if (activity.mode === 'grounded') {
+      return {
+        activity,
+        entry: {
+          simSeconds: activity.groundedAtSimSeconds,
+          kind: 'droneGrounded',
+          severity: 'info',
+          ...droneEntryFields(droneId, patrol),
+          position: activity.position,
+        },
+      }
+    }
+    if (activity.mode === 'lost') {
+      return {
+        activity,
+        entry: {
+          simSeconds: activity.lostAtSimSeconds,
+          kind: 'droneLost',
+          severity: 'warning',
+          ...droneEntryFields(droneId, patrol),
+          position: activity.position,
+        },
+      }
+    }
+    return { activity }
   }
 
   if (incomingActivity.mode === 'travelingToFire') {
@@ -543,15 +629,26 @@ function activityAfterOneTransition(
         const secondsSinceDeparture = lostAtSimSeconds - incomingActivity.departureSimSeconds
         const progress = travelDuration > 0 ? Math.min(1, secondsSinceDeparture / travelDuration) : 1
         const position = interpolateLatLng(incomingActivity.departurePosition, orbitEntryPosition, progress)
-        return { mode: 'lost', position, lostAtSimSeconds }
+        return {
+          activity: { mode: 'lost', position, lostAtSimSeconds },
+          entry: {
+            simSeconds: lostAtSimSeconds,
+            kind: 'droneLost',
+            severity: 'warning',
+            ...droneEntryFields(droneId, patrol),
+            fireId: incomingActivity.assignedFireId,
+            position,
+          },
+        }
       }
     }
 
     const assignedFire = incomingFires[incomingActivity.assignedFireId]
     if (!assignedFire) {
       // Defensive fallback: assigned Fire no longer exists (should not happen
-      // once spawned, but keep this total rather than throwing).
-      return { mode: 'patrolling' }
+      // once spawned, but keep this total rather than throwing). Emits no Log
+      // Entry — it is not an operator-observable transition.
+      return { activity: { mode: 'patrolling' } }
     }
 
     const orbitEntryPosition = orbitPositionFor(
@@ -566,11 +663,21 @@ function activityAfterOneTransition(
       // Already at orbit entry (zero-distance travel or zero cruise speed):
       // begin orbit immediately.
       return {
-        mode: 'investigatingFire',
-        assignedFireId: incomingActivity.assignedFireId,
-        investigationStartedAtSimSeconds: incomingActivity.departureSimSeconds,
-        missionKind: incomingActivity.missionKind,
-        orbitRadiusMeters: incomingActivity.orbitRadiusMeters,
+        activity: {
+          mode: 'investigatingFire',
+          assignedFireId: incomingActivity.assignedFireId,
+          investigationStartedAtSimSeconds: incomingActivity.departureSimSeconds,
+          missionKind: incomingActivity.missionKind,
+          orbitRadiusMeters: incomingActivity.orbitRadiusMeters,
+        },
+        entry: {
+          simSeconds: incomingActivity.departureSimSeconds,
+          kind: 'droneBeganFireOrbit',
+          severity: 'info',
+          ...droneEntryFields(droneId, patrol),
+          fireId: incomingActivity.assignedFireId,
+          position: assignedFire.position,
+        },
       }
     }
 
@@ -580,37 +687,79 @@ function activityAfterOneTransition(
     if (secondsSinceDeparture >= travelDuration) {
       const arrivalSimSeconds = incomingActivity.departureSimSeconds + travelDuration
       return {
-        mode: 'investigatingFire',
-        assignedFireId: incomingActivity.assignedFireId,
-        investigationStartedAtSimSeconds: arrivalSimSeconds,
-        missionKind: incomingActivity.missionKind,
-        orbitRadiusMeters: incomingActivity.orbitRadiusMeters,
+        activity: {
+          mode: 'investigatingFire',
+          assignedFireId: incomingActivity.assignedFireId,
+          investigationStartedAtSimSeconds: arrivalSimSeconds,
+          missionKind: incomingActivity.missionKind,
+          orbitRadiusMeters: incomingActivity.orbitRadiusMeters,
+        },
+        entry: {
+          simSeconds: arrivalSimSeconds,
+          kind: 'droneBeganFireOrbit',
+          severity: 'info',
+          ...droneEntryFields(droneId, patrol),
+          fireId: incomingActivity.assignedFireId,
+          position: assignedFire.position,
+        },
       }
     }
 
-    return incomingActivity
+    return { activity: incomingActivity }
   }
 
   if (incomingActivity.mode === 'returningToBase') {
     const returnDistance = distanceMetersBetween(incomingActivity.departurePosition, patrol.patrolCenter)
 
     if (returnDistance <= 0 || patrol.cruiseSpeedMetersPerSecond <= 0) {
-      return { mode: 'patrolling' }
+      return {
+        activity: { mode: 'patrolling' },
+        entry: {
+          simSeconds: incomingActivity.returnStartedAtSimSeconds,
+          kind: 'droneResumedPatrol',
+          severity: 'info',
+          ...droneEntryFields(droneId, patrol),
+          position: patrol.patrolCenter,
+        },
+      }
     }
 
     const returnDuration = returnDistance / patrol.cruiseSpeedMetersPerSecond
     const secondsSinceReturn = elapsedSimSeconds - incomingActivity.returnStartedAtSimSeconds
 
     if (secondsSinceReturn >= returnDuration) {
-      return { mode: 'patrolling' }
+      return {
+        activity: { mode: 'patrolling' },
+        entry: {
+          simSeconds: incomingActivity.returnStartedAtSimSeconds + returnDuration,
+          kind: 'droneResumedPatrol',
+          severity: 'info',
+          ...droneEntryFields(droneId, patrol),
+          position: patrol.patrolCenter,
+        },
+      }
     }
 
-    return incomingActivity
+    return { activity: incomingActivity }
   }
 
   if (incomingActivity.mode === 'investigatingFire') {
     if (incomingActivity.missionKind === 'oneWay') {
-      return droneActivityAfterLostCheck(incomingActivity, elapsedSimSeconds, patrol, incomingFires)
+      const activity = droneActivityAfterLostCheck(incomingActivity, elapsedSimSeconds, patrol, incomingFires)
+      if (activity.mode === 'lost') {
+        return {
+          activity,
+          entry: {
+            simSeconds: activity.lostAtSimSeconds,
+            kind: 'droneLost',
+            severity: 'warning',
+            ...droneEntryFields(droneId, patrol),
+            fireId: incomingActivity.assignedFireId,
+            position: activity.position,
+          },
+        }
+      }
+      return { activity }
     }
 
     const secondsSinceOrbitStarted = elapsedSimSeconds - incomingActivity.investigationStartedAtSimSeconds
@@ -626,26 +775,45 @@ function activityAfterOneTransition(
         lapDurationSimSeconds,
       )
       // Use the exact lap-completion instant so that the chained-transition
-      // recursion in `activityAfterInvestigationExpiry` can correctly measure
+      // loop in `activityAfterInvestigationExpiry` can correctly measure
       // how far into the return trip we are on the same tick.
       const returnStartedAtSimSeconds =
         incomingActivity.investigationStartedAtSimSeconds + lapDurationSimSeconds
       return {
-        mode: 'returningToBase',
-        departurePosition: orbitExitPosition,
-        returnStartedAtSimSeconds,
+        activity: {
+          mode: 'returningToBase',
+          departurePosition: orbitExitPosition,
+          returnStartedAtSimSeconds,
+        },
+        entry: {
+          simSeconds: returnStartedAtSimSeconds,
+          kind: 'droneReturningAfterOrbit',
+          severity: 'info',
+          ...droneEntryFields(droneId, patrol),
+          fireId: incomingActivity.assignedFireId,
+          position: orbitExitPosition,
+        },
       }
     }
 
-    return incomingActivity
+    return { activity: incomingActivity }
   }
 
   const secondsSinceInvestigationStarted = elapsedSimSeconds - incomingActivity.investigationStartedAtSimSeconds
   if (secondsSinceInvestigationStarted >= INVESTIGATION_DURATION_SIM_SECONDS) {
-    return { mode: 'patrolling' }
+    return {
+      activity: { mode: 'patrolling' },
+      entry: {
+        simSeconds: incomingActivity.investigationStartedAtSimSeconds + INVESTIGATION_DURATION_SIM_SECONDS,
+        kind: 'droneResumedPatrol',
+        severity: 'info',
+        ...droneEntryFields(droneId, patrol),
+        position: patrol.patrolCenter,
+      },
+    }
   }
 
-  return incomingActivity
+  return { activity: incomingActivity }
 }
 
 /**
@@ -918,15 +1086,21 @@ function deriveDronesEventsAndFires(
   droneActivity: Record<string, DroneActivityState>
   events: Record<string, EventRuntimeState>
   fires: Record<string, FireRuntimeState>
+  logDrafts: LogEntryDraft[]
 } {
+  const logDrafts: LogEntryDraft[] = []
+
   const droneActivity: Record<string, DroneActivityState> = {}
   for (const [droneId, patrol] of Object.entries(dronePatrolParams)) {
-    droneActivity[droneId] = activityAfterInvestigationExpiry(
+    const { activity, entries } = activityAfterInvestigationExpiry(
+      droneId,
       incomingDroneActivity[droneId],
       elapsedSimSeconds,
       patrol,
       incomingFires,
     )
+    droneActivity[droneId] = activity
+    for (const entry of entries) logDrafts.push(entry)
   }
 
   const dronePatrol: Record<string, DronePatrolState> = {}
@@ -940,7 +1114,49 @@ function deriveDronesEventsAndFires(
   const events = eventsAt(scenarioEvents, elapsedSimSeconds, incomingEvents, dronePatrol)
   const fires = firesAt(scenarioFireIgnitions, elapsedSimSeconds, incomingFires, dronePatrol, towerDetection, droneActivity, wind)
 
-  return { dronePatrol, droneActivity, events, fires }
+  // Detection Log Entries (fog-of-war, ADR-0008): an Event/Fire that has just
+  // left `'undetected'` this call — i.e. it now carries a
+  // `detectedAtSimSeconds` its incoming copy had no record of — is logged
+  // exactly once, stamped with that embedded Detection instant (not this
+  // call's `elapsedSimSeconds`). Sticky thereafter: an already-Detected
+  // Event/Fire carried forward has an incoming copy already out of
+  // `'undetected'`, so it never re-emits.
+  for (const [id, event] of Object.entries(events)) {
+    const previous = incomingEvents[id]
+    if (event.detectedAtSimSeconds !== undefined && (previous === undefined || previous.status === 'undetected')) {
+      const detectingDrone = event.detectedByAssetId !== undefined ? dronePatrol[event.detectedByAssetId] : undefined
+      logDrafts.push({
+        simSeconds: event.detectedAtSimSeconds,
+        kind: 'eventDetected',
+        severity: 'info',
+        // Events are only ever Detected by a Drone (never a Tower — see
+        // `detectingAssetIdFor`), so `detectedByAssetId` is a Drone id.
+        ...(event.detectedByAssetId !== undefined ? { droneId: event.detectedByAssetId } : {}),
+        ...(detectingDrone ? { droneType: detectingDrone.droneType } : {}),
+        eventId: event.id,
+        eventType: event.type,
+        position: event.position,
+      })
+    }
+  }
+  for (const [id, fire] of Object.entries(fires)) {
+    const previous = incomingFires[id]
+    if (fire.detectedAtSimSeconds !== undefined && (previous === undefined || previous.tier === 'undetected')) {
+      // A Fire discovery is a non-nominal (WARNING) line per CONTEXT.md's
+      // Event Log entry. It can be first Detected by either a Tower or a
+      // Drone, so no Drone id is attributed here — the UI derives the label
+      // from the Fire itself.
+      logDrafts.push({
+        simSeconds: fire.detectedAtSimSeconds,
+        kind: 'fireDetected',
+        severity: 'warning',
+        fireId: fire.id,
+        position: fire.position,
+      })
+    }
+  }
+
+  return { dronePatrol, droneActivity, events, fires, logDrafts }
 }
 
 /**
@@ -1013,6 +1229,12 @@ export function initializeSimulationState(world: World, scenario: Scenario): Sim
     events: derived.events,
     fires: derived.fires,
     wind: scenario.wind,
+    // The Event Log starts empty (ADR-0008): it accumulates only as
+    // transitions occur during subsequent `advanceSimulation`/`withManual*`
+    // calls, so any Detection resolved at `elapsedSimSeconds = 0` here is part
+    // of the initial picture, not a logged transition. `derived.logDrafts` is
+    // deliberately discarded for this reason.
+    log: [],
   }
 }
 
@@ -1061,6 +1283,12 @@ export function advanceSimulation(state: SimulationState, elapsedSimSeconds: num
     events: derived.events,
     fires: derived.fires,
     wind: state.wind,
+    // Carry the incoming log forward and append every transition/Detection
+    // Log Entry emitted this tick, capped oldest-first (ADR-0008). Each
+    // draft's deterministic id embeds its index among this call's drafts, so
+    // replaying the same state along the same time points yields an identical
+    // log.
+    log: logWithDraftsAppended(state.log, derived.logDrafts),
   }
 }
 
@@ -1099,6 +1327,17 @@ export function withManualDispatch(state: SimulationState, droneId: string, even
 
   const investigationStartedAtSimSeconds = state.elapsedSimSeconds
 
+  const entry: LogEntryDraft = {
+    simSeconds: state.elapsedSimSeconds,
+    kind: 'droneDispatchedToEvent',
+    severity: 'info',
+    droneId,
+    droneType: patrol.droneType,
+    eventId,
+    eventType: event.type,
+    position: event.position,
+  }
+
   return {
     ...state,
     dronePatrol: {
@@ -1109,6 +1348,7 @@ export function withManualDispatch(state: SimulationState, droneId: string, even
       ...state.droneActivity,
       [droneId]: { mode: 'investigating', assignedEventId: eventId, investigationStartedAtSimSeconds },
     },
+    log: logWithDraftsAppended(state.log, [entry]),
   }
 }
 
@@ -1169,6 +1409,19 @@ export function withManualFireDispatch(
   const departureSimSeconds = state.elapsedSimSeconds
   const orbitRadiusMeters = fireOrbitRadiusMetersAt(departureSimSeconds - fire.spawnAtSimSeconds, state.wind)
 
+  // A One-Way Mission is a non-nominal (WARNING) dispatch (CONTEXT.md's Event
+  // Log entry); a round-trip Bingo-Range send is an ordinary info line.
+  const entry: LogEntryDraft = {
+    simSeconds: state.elapsedSimSeconds,
+    kind: missionKind === 'roundTrip' ? 'droneDispatchedToFire' : 'droneDispatchedOneWay',
+    severity: missionKind === 'roundTrip' ? 'info' : 'warning',
+    droneId,
+    droneType: patrol.droneType,
+    fireId,
+    missionKind,
+    position: fire.position,
+  }
+
   // The Drone begins flying toward the Fire at cruise speed; its position is
   // unchanged on this tick. The fire tier and Confirmed Shape are updated on
   // the first tick the Drone transitions into 'investigatingFire' (via
@@ -1186,6 +1439,7 @@ export function withManualFireDispatch(
         orbitRadiusMeters,
       },
     },
+    log: logWithDraftsAppended(state.log, [entry]),
   }
 }
 
@@ -1243,6 +1497,20 @@ export function withManualReturnToBase(state: SimulationState, droneId: string, 
     return state
   }
 
+  // The recall order itself is an ordinary (info) operator action; the
+  // eventual Grounded/Lost outcome is logged later, from the tick the return
+  // flight actually completes. `baseStationId` is left undefined — this pure
+  // transition is given only `targetPosition`, and the UI derives the base
+  // label from it.
+  const entry: LogEntryDraft = {
+    simSeconds: state.elapsedSimSeconds,
+    kind: 'droneRecalledToBase',
+    severity: 'info',
+    droneId,
+    droneType: patrol.droneType,
+    position: targetPosition,
+  }
+
   return {
     ...state,
     droneActivity: {
@@ -1254,5 +1522,6 @@ export function withManualReturnToBase(state: SimulationState, droneId: string, 
         returnStartedAtSimSeconds: state.elapsedSimSeconds,
       },
     },
+    log: logWithDraftsAppended(state.log, [entry]),
   }
 }
