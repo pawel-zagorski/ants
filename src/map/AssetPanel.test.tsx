@@ -66,6 +66,7 @@ function simulationStateFixture(overrides: Partial<SimulationState> = {}): Simul
     events: {},
     fires: {},
     wind: windFixture,
+    log: [],
     ...overrides,
   }
 }

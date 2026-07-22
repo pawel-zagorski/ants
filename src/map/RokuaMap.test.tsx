@@ -134,6 +134,27 @@ describe('RokuaMap', () => {
   })
 })
 
+describe('RokuaMap Event Log panel (ADR-0008)', () => {
+  it('renders the Event Log panel as part of the running-simulation layout', () => {
+    render(<RokuaMap world={world} scenario={emptyScenario} />)
+
+    const panel = document.querySelector('.event-log-panel')
+    expect(panel).not.toBeNull()
+    expect(screen.getByText('Event Log')).toBeInTheDocument()
+    // Starts empty (this UI slice never populates the log — the engine PR does).
+    expect(screen.getByText(/no events logged yet/i)).toBeInTheDocument()
+  })
+
+  it('wraps the map and the Event Log strip in the vertical flex layout', () => {
+    render(<RokuaMap world={world} scenario={emptyScenario} />)
+
+    const layout = document.querySelector('.simulation-layout')
+    expect(layout).not.toBeNull()
+    expect(layout?.querySelector('.map-area .rokua-map')).not.toBeNull()
+    expect(layout?.querySelector('.event-log-panel')).not.toBeNull()
+  })
+})
+
 describe('RokuaMap Return Envelope legend', () => {
   it('does not show the Return Envelope legend when nothing is selected', () => {
     render(<RokuaMap world={world} scenario={emptyScenario} />)

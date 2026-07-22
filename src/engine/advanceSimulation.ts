@@ -1013,6 +1013,7 @@ export function initializeSimulationState(world: World, scenario: Scenario): Sim
     events: derived.events,
     fires: derived.fires,
     wind: scenario.wind,
+    log: [],
   }
 }
 
@@ -1061,6 +1062,10 @@ export function advanceSimulation(state: SimulationState, elapsedSimSeconds: num
     events: derived.events,
     fires: derived.fires,
     wind: state.wind,
+    // Passed through unchanged in this UI slice: the engine PR replaces this
+    // with real per-transition emission at merge (ADR-0008). Keeping it here
+    // is what lets `SimulationState` (with its now-required `log`) compile.
+    log: state.log,
   }
 }
 

@@ -1,4 +1,5 @@
 import type { LatLng } from '../map/geo'
+import type { EventLogEntry } from './eventLog'
 import type { HexCoordinate } from './growthEllipse'
 import type { EventType, ScenarioEvent, ScenarioFireIgnition, Wind } from '../scenario/types'
 import type { DroneType } from '../world/types'
@@ -352,4 +353,14 @@ export interface SimulationState {
   events: Record<string, EventRuntimeState>
   fires: Record<string, FireRuntimeState>
   wind: Wind
+  /**
+   * The Event Log (ADR-0008): an append-only, chronological (oldest-first)
+   * list of structured Log Entries the operator cares about, each stamped
+   * with the exact sim-second it occurred and capped at EVENT_LOG_CAP
+   * (oldest dropped, see appendLogEntry). The engine emits these as
+   * transitions happen; the UI renders them newest-first and formats each
+   * to human-readable text (see map/eventLogFormatting.ts). Deliberately
+   * stored history rather than a pure current-snapshot.
+   */
+  log: EventLogEntry[]
 }

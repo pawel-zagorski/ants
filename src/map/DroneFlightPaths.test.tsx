@@ -40,6 +40,7 @@ function stateFixture(
     events,
     fires,
     wind: { directionDegrees: 90, speedMetersPerSecond: 5 },
+    log: [],
   }
 }
 
