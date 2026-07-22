@@ -521,7 +521,7 @@ describe('RokuaMap Manual dispatch for Person Sighting/Fallen Tree (issue O)', (
     expect(screen.getByRole('dialog')).toHaveTextContent('tree-1')
   })
 
-  it('does not open a panel when clicking a Fire Event (out of this issue\'s scope)', () => {
+  it('opens a read-only Detection Status panel (not the "Send" dispatch panel) when clicking a Detected Fire (issue T, not this issue\'s scope)', () => {
     const fireScenario: Scenario = {
       events: [{ id: 'fire-1', type: 'Fire', position: { lat: 64.7, lng: 26.2 }, spawnAtSimSeconds: 0 }],
       wind: TEST_WIND,
@@ -529,6 +529,79 @@ describe('RokuaMap Manual dispatch for Person Sighting/Fallen Tree (issue O)', (
     render(<RokuaMap world={world} scenario={fireScenario} />)
 
     fireEvent.click(document.querySelector('.event-icon-fire') as Element)
+
+    const panel = screen.getByRole('dialog')
+    expect(panel).toHaveTextContent('fire-1')
+    expect(screen.queryByRole('button', { name: 'Send' })).toBeNull()
+  })
+})
+
+describe('RokuaMap Fire clickable Detection Status panel (issue T)', () => {
+  // tower-1 sits at (64.7, 26.2) with a 15000m detectionRadiusMeters — this
+  // Fire spawns right on top of it, guaranteeing a Tower Detection at
+  // elapsedSimSeconds 0.
+  const fireWithinTowerRange: Scenario = {
+    events: [{ id: 'fire-1', type: 'Fire', position: { lat: 64.7, lng: 26.2 }, spawnAtSimSeconds: 0 }],
+    wind: TEST_WIND,
+    startDateTimeIso: '2026-06-01T08:00:00.000Z',
+  }
+
+  it('opens a read-only Detection Status panel when a Tower-Detected Fire marker is clicked', () => {
+    render(<RokuaMap world={world} scenario={fireWithinTowerRange} />)
+
+    fireEvent.click(document.querySelector('.event-icon-fire') as Element)
+
+    const panel = screen.getByRole('dialog')
+    expect(panel).toHaveTextContent('fire-1')
+    expect(panel).toHaveTextContent('tower-1')
+    expect(panel).toHaveTextContent('Tower-Detected')
+    // Scenario Epoch + elapsedSimSeconds 0 => the Epoch itself.
+    expect(panel).toHaveTextContent('2026-06-01 08:00:00')
+    expect(screen.queryByRole('button', { name: 'Send' })).toBeNull()
+  })
+
+  it('closes the Fire panel via its close button', () => {
+    render(<RokuaMap world={world} scenario={fireWithinTowerRange} />)
+
+    fireEvent.click(document.querySelector('.event-icon-fire') as Element)
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('closes the Fire panel when a different asset marker is clicked instead', () => {
+    render(<RokuaMap world={world} scenario={fireWithinTowerRange} />)
+
+    fireEvent.click(document.querySelector('.event-icon-fire') as Element)
+    expect(screen.getByRole('dialog')).toHaveTextContent('fire-1')
+
+    fireEvent.click(document.querySelector('.asset-icon-base-station') as Element)
+    expect(screen.getByRole('dialog')).not.toHaveTextContent('fire-1')
+    expect(screen.getByRole('dialog')).toHaveTextContent('base-1')
+  })
+
+  it('closes the asset status panel when a clickable Fire marker is clicked instead', () => {
+    render(<RokuaMap world={world} scenario={fireWithinTowerRange} />)
+
+    fireEvent.click(document.querySelector('.asset-icon-tower') as Element)
+    expect(screen.getByRole('dialog', { name: /Tower tower-1 status/ })).toBeInTheDocument()
+
+    fireEvent.click(document.querySelector('.event-icon-fire') as Element)
+    expect(screen.queryByRole('dialog', { name: /Tower tower-1 status/ })).toBeNull()
+    expect(screen.getByRole('dialog')).toHaveTextContent('fire-1')
+  })
+
+  it('never opens a panel when clicking an Undetected Fire, even in Ground Truth View', () => {
+    const fireOutsideTowerRange: Scenario = {
+      events: [{ id: 'fire-1', type: 'Fire', position: { lat: 64.3, lng: 26.9 }, spawnAtSimSeconds: 0 }],
+      wind: TEST_WIND,
+    }
+    render(<RokuaMap world={world} scenario={fireOutsideTowerRange} />)
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Ground Truth View' }))
+
+    const marker = document.querySelector('.event-icon-fire')
+    expect(marker).toHaveClass('event-icon-undetected')
+    fireEvent.click(marker as Element)
 
     expect(screen.queryByRole('dialog')).toBeNull()
   })
