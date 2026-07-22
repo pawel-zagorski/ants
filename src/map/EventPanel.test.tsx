@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { EventPanel } from './EventPanel'
 import type { DroneActivityState, EventRuntimeState, SimulationState } from '../engine/types'
-import { droneSpecFixture } from '../test/worldFixtures'
+import { droneSpecFixture, windFixture } from '../test/worldFixtures'
 import type { Drone } from '../world/types'
 
 const detectedFallenTree: EventRuntimeState = {
@@ -48,6 +48,7 @@ function simulationStateFixture(overrides: Partial<SimulationState> = {}): Simul
     scenarioFireIgnitions: [],
     events: {},
     fires: {},
+    wind: windFixture,
     ...overrides,
   }
 }

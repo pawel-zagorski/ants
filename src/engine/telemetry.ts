@@ -2,6 +2,7 @@ import { tangentialHeadingDegrees, tangentialSpeedMetersPerSecond } from '../map
 import type { LatLng } from '../map/geo'
 import { patrolAngleRadiansAt } from './advanceSimulation'
 import { investigateMotionFor } from './dispatch'
+import { orbitMotionFor } from './orbit'
 import type { DroneActivityState, DronePatrolState, FireMissionKind } from './types'
 import type { Drone } from '../world/types'
 
@@ -80,15 +81,22 @@ export interface DroneTelemetry {
  * investigate hover/circle position — see `advanceSimulation.ts`'s
  * `positionForActivity`); while `'patrolling'`, they come from the patrol
  * loop's tangential motion at the current angle ({@link patrolAngleRadiansAt}).
- * `'investigatingFire'` (issue U) reports the same telemetry `state`
+ * `'investigatingFire'` (issue U/V) reports the same telemetry `state`
  * (`'investigating'`) as an Event investigation — from a status-panel
- * telemetry point of view a Drone circling/hovering a Fire looks the same
- * as one circling/hovering an Event, and `DroneTelemetryState` already has
- * no separate value for it — but additionally carries `assignedFireId`/
- * `missionKind` instead of `assignedEventId` (see `DroneTelemetry`'s doc
- * comment). `maxEnduranceSimSeconds` is this specific Drone's own value
- * (issue I — `Drone.maxEnduranceSimSeconds`), not a shared constant, so two
- * Drones with different max endurances drain at different rates.
+ * telemetry point of view a Drone orbiting/circling/hovering something
+ * looks the same, and `DroneTelemetryState` already has no separate value
+ * for it — but additionally carries `assignedFireId`/`missionKind` instead
+ * of `assignedEventId` (see `DroneTelemetry`'s doc comment), and derives
+ * speed/heading from {@link orbitMotionFor} (issue V: both Drone types
+ * orbit a Fire's current extent, at this Drone's own
+ * `patrolLinearSpeedMetersPerSecond` — see `advanceSimulation.ts`'s
+ * doc comment for why that speed, not `cruiseSpeedMetersPerSecond`,
+ * governs it) rather than `dispatch.ts`'s `investigateMotionFor` (which
+ * still governs Event investigation only, unchanged: hover for a
+ * Quadrocopter, fixed-150m-circle for a Fixed-Wing Drone).
+ * `maxEnduranceSimSeconds` is this specific Drone's own value (issue I —
+ * `Drone.maxEnduranceSimSeconds`), not a shared constant, so two Drones
+ * with different max endurances drain at different rates.
  */
 export function droneTelemetryFor(
   patrol: DronePatrolState,
@@ -99,7 +107,7 @@ export function droneTelemetryFor(
   const batteryPercent = batteryPercentAt(elapsedSimSeconds, maxEnduranceSimSeconds)
   const remainingEnduranceSimSeconds = remainingEnduranceSimSecondsAt(elapsedSimSeconds, maxEnduranceSimSeconds)
 
-  if (activity.mode === 'investigating' || activity.mode === 'investigatingFire') {
+  if (activity.mode === 'investigating') {
     const secondsSinceInvestigationStarted = elapsedSimSeconds - activity.investigationStartedAtSimSeconds
     const motion = investigateMotionFor(patrol.droneType, secondsSinceInvestigationStarted)
 
@@ -110,9 +118,27 @@ export function droneTelemetryFor(
       remainingEnduranceSimSeconds,
       speedMetersPerSecond: motion.speedMetersPerSecond,
       ...(motion.headingDegrees !== undefined ? { headingDegrees: motion.headingDegrees } : {}),
-      ...(activity.mode === 'investigating'
-        ? { assignedEventId: activity.assignedEventId }
-        : { assignedFireId: activity.assignedFireId, missionKind: activity.missionKind }),
+      assignedEventId: activity.assignedEventId,
+    }
+  }
+
+  if (activity.mode === 'investigatingFire') {
+    const secondsSinceOrbitStarted = elapsedSimSeconds - activity.investigationStartedAtSimSeconds
+    const patrolLinearSpeedMetersPerSecond = tangentialSpeedMetersPerSecond(
+      patrol.angularSpeedRadiansPerSecond,
+      patrol.patrolRadiusMeters,
+    )
+    const motion = orbitMotionFor(activity.orbitRadiusMeters, patrolLinearSpeedMetersPerSecond, secondsSinceOrbitStarted)
+
+    return {
+      state: 'investigating',
+      position: patrol.position,
+      batteryPercent,
+      remainingEnduranceSimSeconds,
+      speedMetersPerSecond: motion.speedMetersPerSecond,
+      ...(motion.headingDegrees !== undefined ? { headingDegrees: motion.headingDegrees } : {}),
+      assignedFireId: activity.assignedFireId,
+      missionKind: activity.missionKind,
     }
   }
 

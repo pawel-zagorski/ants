@@ -1,7 +1,9 @@
-import { distanceMetersBetween, pointOnCircle } from '../map/geo'
+import { distanceMetersBetween, pointOnCircle, tangentialSpeedMetersPerSecond } from '../map/geo'
 import type { LatLng } from '../map/geo'
 import { INVESTIGATION_DURATION_SIM_SECONDS, investigatePositionFor } from './dispatch'
-import type { Scenario, ScenarioEntry, ScenarioEvent, ScenarioFireIgnition } from '../scenario/types'
+import { fireFootprintHexCells, fireOrbitRadiusMetersAt } from './growthEllipse'
+import { orbitLapDurationSimSeconds, orbitPositionFor } from './orbit'
+import type { Scenario, ScenarioEntry, ScenarioEvent, ScenarioFireIgnition, Wind } from '../scenario/types'
 import type { BaseStation, DroneType, World } from '../world/types'
 import type {
   DroneActivityState,
@@ -295,8 +297,9 @@ function spawnedFiresAt(
  * Fire is checked against the current tick's Tower/Drone positions via
  * {@link detectingAssetIdForFire}. Unlike `eventWithDetectionApplied`,
  * there is no resolution step afterward — a Fire never auto-resolves — and
- * the only tier a fresh Detection can produce here is `'towerDetected'`;
- * `'investigated'` is not yet reachable in this slice (issues U/V).
+ * the only tier a fresh Detection can produce here is `'towerDetected'` —
+ * `'investigated'` is a separate, later ratchet layered on top by {@link
+ * fireWithConfirmedShapeApplied}, once a Drone actually orbits it.
  */
 function fireWithDetectionApplied(
   fire: FireRuntimeState,
@@ -317,13 +320,92 @@ function fireWithDetectionApplied(
   return { ...fire, tier: 'towerDetected', detectedByAssetId: detectingAssetId, detectedAtSimSeconds: elapsedSimSeconds }
 }
 
+/** Whether any Drone in `droneActivity` is, this tick, `'investigatingFire'` `fireId` specifically — see {@link fireWithConfirmedShapeApplied}. */
+function isAnyDroneOrbitingFire(fireId: string, droneActivity: Record<string, DroneActivityState>): boolean {
+  return Object.values(droneActivity).some(
+    (activity) => activity.mode === 'investigatingFire' && activity.assignedFireId === fireId,
+  )
+}
+
+/**
+ * `fire`, with the real Fire Footprint (`growthEllipse.ts`'s
+ * `fireFootprintHexCells`) captured as this Fire's Confirmed Shape
+ * *right now* — the moment a Drone begins actively orbiting it (issue V,
+ * `CONTEXT.md`'s Confirmed Shape entry) and every tick afterward while at
+ * least one still is. Also ratchets `tier` to `'investigated'` (a Fire
+ * reaching `'investigated'` and starting/continuing to be orbited are the
+ * same event in this engine — see `DroneActivityState`'s doc comment: an
+ * orbit begins the instant dispatch happens, with no separate travel-time
+ * phase). Shared by both {@link fireWithConfirmedShapeApplied} (the
+ * per-tick path) and `withManualFireDispatch` (the immediate,
+ * user-triggered "Send" path, which needs this exact same snapshot without
+ * waiting for the next `advanceSimulation` tick).
+ */
+function fireWithOrbitStarted(fire: FireRuntimeState, elapsedSimSeconds: number, wind: Wind): FireRuntimeState {
+  const elapsedSecondsSinceIgnition = elapsedSimSeconds - fire.spawnAtSimSeconds
+
+  return {
+    ...fire,
+    tier: 'investigated',
+    confirmedFootprintHexCells: fireFootprintHexCells(elapsedSecondsSinceIgnition, wind),
+    confirmedAtSimSeconds: elapsedSimSeconds,
+  }
+}
+
+/**
+ * Layers issue V's `'investigated'` tier and Confirmed Shape tracking on
+ * top of `fire` (already run through {@link fireWithDetectionApplied}):
+ *
+ * - While {@link isAnyDroneOrbitingFire} this Fire this tick: ratchets to
+ *   `'investigated'` and re-derives the Confirmed Shape to the *current*
+ *   live Fire Footprint ({@link fireWithOrbitStarted}) — this is the "live
+ *   Confirmed Shape updates every tick while a Drone actively orbits"
+ *   acceptance criterion.
+ * - Otherwise, if `previousFireState` already had a Confirmed Shape
+ *   (`confirmedFootprintHexCells` set): carries `tier: 'investigated'` and
+ *   both Confirmed Shape fields forward *unchanged* from
+ *   `previousFireState` — this is the freeze: the instant the last
+ *   orbiting Drone leaves, this function stops re-deriving the footprint
+ *   and simply repeats whatever `previousFireState` already held, forever,
+ *   same "carried forward unchanged" shape every other sticky field in
+ *   this engine uses.
+ * - Otherwise (never yet orbited): returns `fire` unchanged — still
+ *   whichever of `'undetected'`/`'towerDetected'`
+ *   {@link fireWithDetectionApplied} produced, no Confirmed Shape yet.
+ */
+function fireWithConfirmedShapeApplied(
+  fire: FireRuntimeState,
+  previousFireState: FireRuntimeState | undefined,
+  elapsedSimSeconds: number,
+  droneActivity: Record<string, DroneActivityState>,
+  wind: Wind,
+): FireRuntimeState {
+  if (isAnyDroneOrbitingFire(fire.id, droneActivity)) {
+    return fireWithOrbitStarted(fire, elapsedSimSeconds, wind)
+  }
+
+  if (previousFireState?.confirmedFootprintHexCells) {
+    return {
+      ...fire,
+      tier: 'investigated',
+      confirmedFootprintHexCells: previousFireState.confirmedFootprintHexCells,
+      confirmedAtSimSeconds: previousFireState.confirmedAtSimSeconds,
+    }
+  }
+
+  return fire
+}
+
 /**
  * The Fire mirror of {@link eventsAt} (ADR-0004): starts from {@link
- * spawnedFiresAt}'s fresh snapshot, then runs each Fire through {@link
+ * spawnedFiresAt}'s fresh snapshot, runs each Fire through {@link
  * fireWithDetectionApplied} against `incomingFires` (the previous tick's
  * `SimulationState.fires`, for sticky tier) and the current tick's
- * `dronePatrol`/`towerDetection` positions. Same tick-resolution caveat as
- * `eventsAt` applies.
+ * `dronePatrol`/`towerDetection` positions, then layers {@link
+ * fireWithConfirmedShapeApplied} (issue V) on top using this tick's
+ * already-derived `droneActivity` (post-expiry-check — see
+ * `deriveDronesEventsAndFires`'s call order) and the Scenario's `wind`.
+ * Same tick-resolution caveat as `eventsAt` applies.
  */
 function firesAt(
   scenarioFireIgnitions: readonly ScenarioFireIgnition[],
@@ -331,14 +413,37 @@ function firesAt(
   incomingFires: Record<string, FireRuntimeState>,
   dronePatrol: Record<string, DronePatrolState>,
   towerDetection: Record<string, TowerDetectionState>,
+  droneActivity: Record<string, DroneActivityState>,
+  wind: Wind,
 ): Record<string, FireRuntimeState> {
   const fires: Record<string, FireRuntimeState> = {}
 
   for (const [id, fire] of Object.entries(spawnedFiresAt(scenarioFireIgnitions, elapsedSimSeconds))) {
-    fires[id] = fireWithDetectionApplied(fire, incomingFires[id], elapsedSimSeconds, dronePatrol, towerDetection)
+    const detected = fireWithDetectionApplied(fire, incomingFires[id], elapsedSimSeconds, dronePatrol, towerDetection)
+    fires[id] = fireWithConfirmedShapeApplied(detected, incomingFires[id], elapsedSimSeconds, droneActivity, wind)
   }
 
   return fires
+}
+
+/**
+ * A Drone's steady, visible-animation linear speed (meters/second) along
+ * whatever circle it's currently moving on — its own resolved patrol-loop
+ * tangential speed (`patrolRadiusMeters`/`angularSpeedRadiansPerSecond`,
+ * already folding in any per-Drone `patrolSpeedMetersPerSecond` override —
+ * see `initializeSimulationState`). Issue V reuses this same speed to
+ * govern a Fire-investigating Drone's orbit (see `orbitPositionFor`/
+ * `orbitMotionFor` callers below) rather than `cruiseSpeedMetersPerSecond`
+ * (which drives only the Return Envelope/Bingo Range *distance* budget
+ * math — a representative range-planning figure, not a per-Drone-type
+ * visible animation rate — see `world/types.ts`'s `Drone.cruiseSpeedMetersPerSecond`
+ * doc comment) — the orbit is exactly as visible on the map as the
+ * patrol loop it interrupts, so it should move at that same visible rate,
+ * not silently speed up or slow down when a Drone switches from patrolling
+ * to orbiting a Fire.
+ */
+function patrolLinearSpeedMetersPerSecond(patrol: DronePatrolState): number {
+  return tangentialSpeedMetersPerSecond(patrol.angularSpeedRadiansPerSecond, patrol.patrolRadiusMeters)
 }
 
 /**
@@ -349,24 +454,47 @@ function firesAt(
  * unless `INVESTIGATION_DURATION_SIM_SECONDS` has passed since it started,
  * in which case the Drone reverts to `'patrolling'` (issue F: "After the
  * investigation interval elapses, the Drone's mode flips back to
- * patrolling"). `'investigatingFire'` (issue U) is deliberately left
- * untouched here — unlike a fixed-duration Event investigation, a Fire
- * investigation's end condition depends on its `missionKind` (complete one
- * orbit lap vs. fly until endurance is exhausted), which isn't computed
- * anywhere yet (issues V/W); until those land, a Drone sent to a Fire stays
- * `'investigatingFire'` forever, same "sticky, carried forward unchanged"
- * treatment `eventWithDetectionApplied` gives an already-`'detected'`
- * Event. Missing/`'patrolling'` input passes through unchanged.
+ * patrolling"). `'investigatingFire'` (issue U/V) has its own, different
+ * completion condition, keyed by `missionKind`:
+ *
+ * - `'roundTrip'` (Bingo Range): completes after exactly one full orbit
+ *   lap (`orbit.ts`'s `orbitLapDurationSimSeconds`, using the snapshot
+ *   `orbitRadiusMeters` taken at dispatch time and this Drone's own patrol
+ *   linear speed — see `patrolLinearSpeedMetersPerSecond`), then reverts to
+ *   `'patrolling'` — mirroring the Event-investigation pattern above, just
+ *   with a lap-based condition instead of a fixed timer (PRD user story
+ *   33).
+ * - `'oneWay'` (One-Way Mission): deliberately left untouched here — issue
+ *   W (not this one) gives it a real ending (endurance exhaustion ->
+ *   Lost); until then it stays `'investigatingFire'` forever, same
+ *   "sticky, carried forward unchanged" treatment `eventWithDetectionApplied`
+ *   gives an already-`'detected'` Event.
+ *
+ * Missing/`'patrolling'` input passes through unchanged.
  */
 function activityAfterInvestigationExpiry(
   incomingActivity: DroneActivityState | undefined,
   elapsedSimSeconds: number,
+  patrol: DronePatrolState,
 ): DroneActivityState {
   if (!incomingActivity || incomingActivity.mode === 'patrolling') {
     return { mode: 'patrolling' }
   }
 
   if (incomingActivity.mode === 'investigatingFire') {
+    if (incomingActivity.missionKind === 'oneWay') {
+      return incomingActivity
+    }
+
+    const secondsSinceOrbitStarted = elapsedSimSeconds - incomingActivity.investigationStartedAtSimSeconds
+    const lapDurationSimSeconds = orbitLapDurationSimSeconds(
+      incomingActivity.orbitRadiusMeters,
+      patrolLinearSpeedMetersPerSecond(patrol),
+    )
+    if (secondsSinceOrbitStarted >= lapDurationSimSeconds) {
+      return { mode: 'patrolling' }
+    }
+
     return incomingActivity
   }
 
@@ -394,17 +522,20 @@ export function patrolAngleRadiansAt(patrol: DronePatrolState, elapsedSimSeconds
 /**
  * A Drone's position at `elapsedSimSeconds` given its current `activity`:
  * its normal closed-form patrol-loop position while `'patrolling'` (slice
- * C, unchanged), or — while `'investigating'`/`'investigatingFire'` — a
- * hover/circle position around the assigned Event/Fire, looked up from
- * `incomingEvents`/`incomingFires` (an Event's position never changes once
- * spawned; a Fire's position is likewise fixed at its ignition point, only
- * its Footprint grows around it — see `FireRuntimeState`/`growthEllipse.ts`
- * — so the previous tick's copy is a safe, stable source either way). Reuses
- * the exact same `investigatePositionFor` hover/circle math for both (issue
- * U: no separate orbit math yet — see `bingoRange.ts`'s
- * `FIRE_ORBIT_RADIUS_METERS` doc comment for why that's a deliberate,
- * documented placeholder pending issue V's real orbit logic). Falls back to
- * the patrol position if the assigned Event/Fire is somehow missing from
+ * C, unchanged); a hover/circle position around the assigned Event while
+ * `'investigating'` (issue F, unchanged — Person Sighting/Fallen Tree
+ * investigation behavior is untouched by issue V); or, while
+ * `'investigatingFire'` (issue V), a position on the orbit circle around
+ * the assigned Fire's (fixed, never-moving) ignition point — *both* Drone
+ * types orbit a Fire, neither hovers nor uses the old fixed-150m circle
+ * (`orbitPositionFor`, `activity.orbitRadiusMeters`'s dispatch-time
+ * snapshot, and this Drone's own `patrolLinearSpeedMetersPerSecond`).
+ * `incomingFires`/`incomingEvents` are looked up from the previous tick's
+ * state (an Event's position never changes once spawned; a Fire's position
+ * is likewise fixed at its ignition point, only its Footprint grows around
+ * it — see `FireRuntimeState`/`growthEllipse.ts` — so the previous tick's
+ * copy is a safe, stable source either way). Falls back to the patrol
+ * position if the assigned Event/Fire is somehow missing from
  * `incomingEvents`/`incomingFires`, which should not happen in practice
  * (dispatch only ever assigns an id already present in that tick's
  * `events`/`fires`) but keeps this function total rather than throwing.
@@ -430,9 +561,10 @@ function positionForActivity(
   if (activity.mode === 'investigatingFire') {
     const assignedFire = incomingFires[activity.assignedFireId]
     if (assignedFire) {
-      return investigatePositionFor(
-        patrol.droneType,
+      return orbitPositionFor(
         assignedFire.position,
+        activity.orbitRadiusMeters,
+        patrolLinearSpeedMetersPerSecond(patrol),
         elapsedSimSeconds - activity.investigationStartedAtSimSeconds,
       )
     }
@@ -490,6 +622,7 @@ function deriveDronesEventsAndFires(
   incomingDroneActivity: Record<string, DroneActivityState>,
   incomingEvents: Record<string, EventRuntimeState>,
   incomingFires: Record<string, FireRuntimeState>,
+  wind: Wind,
 ): {
   dronePatrol: Record<string, DronePatrolState>
   droneActivity: Record<string, DroneActivityState>
@@ -497,8 +630,8 @@ function deriveDronesEventsAndFires(
   fires: Record<string, FireRuntimeState>
 } {
   const droneActivity: Record<string, DroneActivityState> = {}
-  for (const droneId of Object.keys(dronePatrolParams)) {
-    droneActivity[droneId] = activityAfterInvestigationExpiry(incomingDroneActivity[droneId], elapsedSimSeconds)
+  for (const [droneId, patrol] of Object.entries(dronePatrolParams)) {
+    droneActivity[droneId] = activityAfterInvestigationExpiry(incomingDroneActivity[droneId], elapsedSimSeconds, patrol)
   }
 
   const dronePatrol: Record<string, DronePatrolState> = {}
@@ -510,7 +643,7 @@ function deriveDronesEventsAndFires(
   }
 
   const events = eventsAt(scenarioEvents, elapsedSimSeconds, incomingEvents, dronePatrol)
-  const fires = firesAt(scenarioFireIgnitions, elapsedSimSeconds, incomingFires, dronePatrol, towerDetection)
+  const fires = firesAt(scenarioFireIgnitions, elapsedSimSeconds, incomingFires, dronePatrol, towerDetection, droneActivity, wind)
 
   return { dronePatrol, droneActivity, events, fires }
 }
@@ -570,6 +703,7 @@ export function initializeSimulationState(world: World, scenario: Scenario): Sim
     initialDroneActivity,
     {},
     {},
+    scenario.wind,
   )
 
   return {
@@ -581,6 +715,7 @@ export function initializeSimulationState(world: World, scenario: Scenario): Sim
     scenarioFireIgnitions,
     events: derived.events,
     fires: derived.fires,
+    wind: scenario.wind,
   }
 }
 
@@ -616,6 +751,7 @@ export function advanceSimulation(state: SimulationState, elapsedSimSeconds: num
     state.droneActivity,
     state.events,
     state.fires,
+    state.wind,
   )
 
   return {
@@ -627,6 +763,7 @@ export function advanceSimulation(state: SimulationState, elapsedSimSeconds: num
     scenarioFireIgnitions: state.scenarioFireIgnitions,
     events: derived.events,
     fires: derived.fires,
+    wind: state.wind,
   }
 }
 
@@ -691,19 +828,32 @@ export function withManualDispatch(state: SimulationState, droneId: string, even
  * `FirePanel` itself decides this via `bingoRange.ts`'s
  * `classifyFireDispatch`, not this function, since classification depends
  * on live telemetry this pure state-transition has no need to recompute).
- * Its position is re-derived immediately via `investigatePositionFor`
- * (same hover/circle-at-the-target math `withManualDispatch` uses, applied
- * to the Fire's position instead of an Event's — see `positionForActivity`'s
- * doc comment for why there's no separate orbit math yet). Unlike
- * `'investigating'`, there is no fixed-duration expiry to hand off to here
- * — `activityAfterInvestigationExpiry` deliberately leaves
- * `'investigatingFire'` sticky until issues V/W give it a real ending
- * condition. A no-op (returns `state` unchanged, same object identity) if
- * `droneId` isn't currently `'patrolling'` or `fireId` isn't a
- * currently-non-`'undetected'` Fire (i.e. at least Tower-Detected, so it
- * has an open, clickable `FirePanel` to send from) — `FirePanel` only ever
- * offers "Send" for an eligible combination, but this stays
- * defensive/total rather than throwing on a stale click.
+ *
+ * Issue V: dispatch *is* the instant orbiting begins in this engine (no
+ * separate travel-time phase — mirrors `withManualDispatch`'s own
+ * immediate-hover/circle convention), so this function does the same two
+ * things {@link fireWithOrbitStarted}/`positionForActivity` would do on
+ * the very next `advanceSimulation` tick, just immediately: (1) snapshots
+ * the Fire's real current orbit radius (`growthEllipse.ts`'s
+ * `fireOrbitRadiusMetersAt`, using `state.wind`) into the new
+ * `'investigatingFire'` activity's `orbitRadiusMeters` — fixed for this
+ * whole investigation, per that field's own doc comment — and re-derives
+ * the Drone's position onto that orbit circle via `orbitPositionFor`
+ * (replacing `withManualDispatch`'s hover/circle-at-the-target math: both
+ * Drone types orbit a Fire, neither hovers); (2) ratchets the Fire itself
+ * straight to `'investigated'` with its first Confirmed Shape snapshot
+ * (`fireWithOrbitStarted`), so the map reflects "this Fire is now being
+ * orbited" the instant "Send" is clicked, not one tick later. Unlike
+ * `'investigating'`, there is still no fixed-duration expiry to hand off
+ * to here — `activityAfterInvestigationExpiry` gives a `'roundTrip'`
+ * mission a one-orbit-lap ending and deliberately leaves `'oneWay'` sticky
+ * until issue W's endurance-exhaustion ending. A no-op (returns `state`
+ * unchanged, same object identity) if `droneId` isn't currently
+ * `'patrolling'` or `fireId` isn't a currently-non-`'undetected'` Fire
+ * (i.e. at least Tower-Detected, so it has an open, clickable `FirePanel`
+ * to send from) — `FirePanel` only ever offers "Send" for an eligible
+ * combination, but this stays defensive/total rather than throwing on a
+ * stale click.
  */
 export function withManualFireDispatch(
   state: SimulationState,
@@ -720,16 +870,28 @@ export function withManualFireDispatch(
   }
 
   const investigationStartedAtSimSeconds = state.elapsedSimSeconds
+  const orbitRadiusMeters = fireOrbitRadiusMetersAt(investigationStartedAtSimSeconds - fire.spawnAtSimSeconds, state.wind)
+  const orbitPosition = orbitPositionFor(fire.position, orbitRadiusMeters, patrolLinearSpeedMetersPerSecond(patrol), 0)
 
   return {
     ...state,
     dronePatrol: {
       ...state.dronePatrol,
-      [droneId]: { ...patrol, position: investigatePositionFor(patrol.droneType, fire.position, 0) },
+      [droneId]: { ...patrol, position: orbitPosition },
     },
     droneActivity: {
       ...state.droneActivity,
-      [droneId]: { mode: 'investigatingFire', assignedFireId: fireId, investigationStartedAtSimSeconds, missionKind },
+      [droneId]: {
+        mode: 'investigatingFire',
+        assignedFireId: fireId,
+        investigationStartedAtSimSeconds,
+        missionKind,
+        orbitRadiusMeters,
+      },
+    },
+    fires: {
+      ...state.fires,
+      [fireId]: fireWithOrbitStarted(fire, state.elapsedSimSeconds, state.wind),
     },
   }
 }

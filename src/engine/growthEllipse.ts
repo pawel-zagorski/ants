@@ -133,6 +133,57 @@ export function fireFootprintExtentMetersAt(
 }
 
 /**
+ * The radius (meters) of the smallest circle, centered on the Fire's own
+ * ignition point (`FireRuntimeState.position` — a Fire never moves, only
+ * its Footprint grows around it), that's guaranteed to fully enclose its
+ * current Growth Ellipse — this is issue V's "orbit the fire's current
+ * extent" radius (`CONTEXT.md`'s Confirmed Shape entry): a physically
+ * orbiting Drone circles the ignition point itself, not the ellipse's own
+ * wind-drifted center, so the radius has to cover the ellipse's *furthest*
+ * reach from the ignition point in any direction, not just its semi-major
+ * axis length measured from its own center.
+ *
+ * That furthest reach is always exactly `extent.centerOffsetMeters +
+ * extent.semiMajorAxisMeters` — i.e. the downwind head distance, not a
+ * separate formula. Proof sketch: the head distance is by construction >=
+ * the back distance (`headRateOfSpreadMetersPerSecond` is clamped to never
+ * fall below `BACK_ROS_METERS_PER_SECOND`), which makes
+ * `semiMajorAxisMeters` (their average) >= `semiMinorAxisMeters`
+ * (`semiMajorAxisMeters` scaled down by the same head/back ratio). Any
+ * flank point sits `centerOffsetMeters` along the downwind axis plus
+ * `semiMinorAxisMeters` across it from the ignition point, i.e.
+ * `sqrt(centerOffsetMeters^2 + semiMinorAxisMeters^2)` away — since
+ * `semiMinorAxisMeters <= semiMajorAxisMeters`, that Pythagorean distance
+ * is always <= `centerOffsetMeters + semiMajorAxisMeters` (the head
+ * distance), with equality only at zero wind (a true circle, where every
+ * direction is equally far).
+ *
+ * Design decision: this is used as the orbit radius for *every*
+ * `'investigatingFire'` Drone, regardless of whether the Fire is still
+ * merely `'towerDetected'` or already `'investigated'` — i.e. always the
+ * real Growth Ellipse extent, never the Uncertainty Ellipse's
+ * (`uncertaintyEllipse.ts`) growing-blur approximation, even though
+ * `CONTEXT.md`'s Bingo Range entry name-checks both ("complete one full
+ * orbit lap of its Fire Footprint/Uncertainty Ellipse"). Reasoning: this
+ * function is a pure, deterministic function of `elapsedSecondsSinceIgnition`/
+ * `wind` alone, so the engine can always compute a Fire's real physical
+ * extent internally the instant it exists, whether or not the operator
+ * happens to know it yet — the Uncertainty Ellipse only exists as a
+ * *display* stand-in for what the operator doesn't yet know, and using it
+ * to size an actual Drone's physical flight path would be backwards: a
+ * real Drone dispatched to a Fire flies around the Fire's real current
+ * edge (discovering it, which is the whole point of investigating), not
+ * around a display overlay. Both `withManualFireDispatch`'s dispatch-time
+ * snapshot and `bingoRange.ts`'s round-trip budget math call this same
+ * function for exactly this reason, keeping "how big a circle does the
+ * Drone actually have to fly" consistent everywhere it's asked.
+ */
+export function fireOrbitRadiusMetersAt(elapsedSecondsSinceIgnition: number, wind: Wind): number {
+  const extent = fireFootprintExtentMetersAt(elapsedSecondsSinceIgnition, wind)
+  return extent.centerOffsetMeters + extent.semiMajorAxisMeters
+}
+
+/**
  * The local (east, north) meters offset of hex cell `(q, r)`'s centroid
  * from the grid's origin — the standard pointy-top axial-to-pixel formula
  * (hex "size" = circumradius, center-to-vertex distance), with `(0, 0)`

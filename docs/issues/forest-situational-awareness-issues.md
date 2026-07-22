@@ -528,7 +528,7 @@ T
 
 ---
 
-## [ ] V — Drone investigates Fire: orbit, live Confirmed Shape, one-lap completion
+## [x] V — Drone investigates Fire: orbit, live Confirmed Shape, one-lap completion
 
 ### Parent
 
@@ -540,10 +540,10 @@ A Drone dispatched to a Fire (issue U) flies to it, then both Drone types orbit 
 
 ### Acceptance criteria
 
-- [ ] An investigating Drone (either type) orbits the Fire's current extent rather than hovering/fixed-150m-circling
-- [ ] While orbiting, the default view's Confirmed Shape updates every tick to match the live Fire Footprint
-- [ ] After one full orbit lap, a Bingo-Range Drone's Confirmed Shape freezes (stops updating) and the Drone returns to its normal patrol loop
-- [ ] Unit tests cover: orbit radius scales with Fire extent, one-lap completion timing (circumference / patrol speed), and the freeze-on-departure behavior
+- [x] An investigating Drone (either type) orbits the Fire's current extent rather than hovering/fixed-150m-circling
+- [x] While orbiting, the default view's Confirmed Shape updates every tick to match the live Fire Footprint
+- [x] After one full orbit lap, a Bingo-Range Drone's Confirmed Shape freezes (stops updating) and the Drone returns to its normal patrol loop
+- [x] Unit tests cover: orbit radius scales with Fire extent, one-lap completion timing (circumference / patrol speed), and the freeze-on-departure behavior
 
 ### Blocked by
 

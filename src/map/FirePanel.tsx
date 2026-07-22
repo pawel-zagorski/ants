@@ -1,8 +1,10 @@
 import { fireTierLabel } from './assetPanelFormatting'
 import { classifyFireDispatch } from '../engine/bingoRange'
+import { fireOrbitRadiusMetersAt } from '../engine/growthEllipse'
 import { formatScenarioDateTime, pad2 } from '../engine/scenarioEpoch'
 import { droneTelemetryFor } from '../engine/telemetry'
 import type { FireMissionKind, FireRuntimeState, SimulationState } from '../engine/types'
+import type { Wind } from '../scenario/types'
 import type { BaseStation, Drone } from '../world/types'
 
 export interface FirePanelProps {
@@ -31,6 +33,14 @@ export interface FirePanelProps {
   drones: readonly Drone[]
   /** The World's full Base Station roster — the "reach a Base Station afterward" leg of the Bingo Range calculation (see `bingoRange.ts`). */
   baseStations: readonly BaseStation[]
+  /**
+   * The current Scenario's `Wind` (issue V) — feeds
+   * `growthEllipse.ts`'s `fireOrbitRadiusMetersAt`, which
+   * {@link fireDispatchListsFor} uses to compute this Fire's *real* current
+   * orbit radius (replacing issue U's fixed `FIRE_ORBIT_RADIUS_METERS`
+   * placeholder) for `bingoRange.ts`'s round-trip-distance calculation.
+   */
+  wind: Wind
   /**
    * Issue U's manual Fire-dispatch trigger: sends `droneId` to investigate
    * this Fire via `useSimulationClock.sendDroneToFire`, carrying which of
@@ -78,15 +88,26 @@ function formatDetectedAt(detectedAtSimSeconds: number, startDateTimeIso: string
  * a Lost Drone will land in a `droneActivity` mode other than
  * `'patrolling'` and fall out of `availableDrones` the same way an
  * investigating one already does today, with no change needed here.
+ *
+ * `wind` (issue V) feeds `growthEllipse.ts`'s `fireOrbitRadiusMetersAt`:
+ * this Fire's *real* current orbit radius, evaluated at its elapsed time
+ * since ignition *right now* (the moment the operator is viewing this
+ * panel — not projected forward to whatever it might grow to by the time
+ * a Drone actually arrives, a documented simplification, same spirit as
+ * the fixed placeholder radius it replaces), computed once and passed
+ * into every candidate's `classifyFireDispatch` call below — replacing
+ * issue U's fixed `FIRE_ORBIT_RADIUS_METERS`.
  */
 function fireDispatchListsFor(
   fire: FireRuntimeState,
   drones: readonly Drone[],
   simulationState: SimulationState,
   baseStations: readonly BaseStation[],
+  wind: Wind,
 ): { bingoRange: Drone[]; oneWayMission: Drone[] } {
   const bingoRange: Drone[] = []
   const oneWayMission: Drone[] = []
+  const orbitRadiusMeters = fireOrbitRadiusMetersAt(simulationState.elapsedSimSeconds - fire.spawnAtSimSeconds, wind)
 
   for (const drone of drones) {
     const patrol = simulationState.dronePatrol[drone.id]
@@ -111,6 +132,7 @@ function fireDispatchListsFor(
       },
       fire.position,
       baseStations,
+      orbitRadiusMeters,
     )
 
     if (classification === 'bingoRange') bingoRange.push(drone)
@@ -169,8 +191,8 @@ function FireDispatchDroneList({
  * can record which kind of mission it is on the Drone's runtime state
  * (`DroneActivityState`'s `'investigatingFire'` variant).
  */
-export function FirePanel({ fire, startDateTimeIso, simulationState, drones, baseStations, onSend, onClose }: FirePanelProps) {
-  const { bingoRange, oneWayMission } = fireDispatchListsFor(fire, drones, simulationState, baseStations)
+export function FirePanel({ fire, startDateTimeIso, simulationState, drones, baseStations, wind, onSend, onClose }: FirePanelProps) {
+  const { bingoRange, oneWayMission } = fireDispatchListsFor(fire, drones, simulationState, baseStations, wind)
 
   return (
     <div className="asset-panel fire-panel" role="dialog" aria-label={`Fire ${fire.id} status`}>

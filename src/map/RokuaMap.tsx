@@ -4,6 +4,7 @@ import 'leaflet/dist/leaflet.css'
 import { toLeafletBounds } from './geo'
 import { AssetMarkers } from './AssetMarkers'
 import { AssetPanel } from './AssetPanel'
+import { ConfirmedShapeLayer } from './ConfirmedShapeLayer'
 import { DatalinkLines } from './DatalinkLines'
 import { EventMarkers } from './EventMarkers'
 import { EventPanel } from './EventPanel'
@@ -80,8 +81,10 @@ function isDroneAsset(asset: Asset): asset is Drone {
  * the default view. That default view instead shows the Uncertainty
  * Ellipse (issue S, `UncertaintyEllipseLayer`) for a Tower-Detected,
  * not-yet-Investigated Fire, sized by the detecting Tower's distance and
- * elapsed time since Detection — a later issue still owes the Confirmed
- * Shape treatment once a Fire reaches `'investigated'`. Clicking a
+ * elapsed time since Detection, or the Confirmed Shape (issue V,
+ * `ConfirmedShapeLayer`) once a Fire reaches `'investigated'` — the two
+ * are mutually exclusive by tier, so a Fire is always covered by exactly
+ * one of them (or neither, while still `'undetected'`). Clicking a
  * clickable (non-`'undetected'`) Fire marker instead opens `FirePanel`
  * (issue T/U): its read-only Detection Status (detecting Tower id/time,
  * current tier) plus a Bingo Range/One-Way Mission "Send" split (issue U,
@@ -170,6 +173,7 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
         elapsedSimSeconds={clock.simulationState.elapsedSimSeconds}
         groundTruthViewEnabled={groundTruthViewEnabled}
       />
+      <ConfirmedShapeLayer fires={clock.simulationState.fires} groundTruthViewEnabled={groundTruthViewEnabled} />
       {selectedAsset && isDroneAsset(selectedAsset) && selectedDroneRemainingEnduranceSimSeconds !== undefined && (
         <ReturnEnvelope
           drone={selectedAsset}
@@ -202,6 +206,7 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
           simulationState={clock.simulationState}
           drones={world.drones}
           baseStations={liveWorld.baseStations}
+          wind={scenario.wind}
           onSend={(droneId, missionKind) => clock.sendDroneToFire(droneId, selectedFire.id, missionKind)}
           onClose={() => setSelectedFireId(null)}
         />
