@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   droneTelemetryStateLabel,
+  fireTierLabel,
   formatBatteryPercent,
   formatHeadingDegrees,
   formatRemainingEndurance,
@@ -54,5 +55,13 @@ describe('droneTelemetryStateLabel', () => {
     expect(droneTelemetryStateLabel('returning')).toBe('Returning')
     expect(droneTelemetryStateLabel('charging')).toBe('Charging')
     expect(droneTelemetryStateLabel('fault')).toBe('Fault')
+  })
+})
+
+describe('fireTierLabel', () => {
+  it('renders each FireTier discriminant using CONTEXT.md\'s exact vocabulary', () => {
+    expect(fireTierLabel('undetected')).toBe('Undetected')
+    expect(fireTierLabel('towerDetected')).toBe('Tower-Detected')
+    expect(fireTierLabel('investigated')).toBe('Investigated')
   })
 })

@@ -482,7 +482,7 @@ Q, R
 
 ---
 
-## [ ] T — Fire clickable: Detection Status panel (read-only)
+## [x] T — Fire clickable: Detection Status panel (read-only)
 
 ### Parent
 
@@ -494,10 +494,10 @@ Add click handling for Fires (mirroring issue O's Event click pattern) opening a
 
 ### Acceptance criteria
 
-- [ ] Clicking a Fire (marker, Uncertainty Ellipse, or Fire Footprint hex shape) opens a panel
-- [ ] Panel shows the detecting Tower's id and a calendar date/time (via Scenario Epoch), and current tier
-- [ ] Panel closes the same way other status panels do (close button / selecting something else)
-- [ ] Component test covers panel content for a Tower-Detected Fire fixture
+- [x] Clicking a Fire (marker, Uncertainty Ellipse, or Fire Footprint hex shape) opens a panel
+- [x] Panel shows the detecting Tower's id and a calendar date/time (via Scenario Epoch), and current tier
+- [x] Panel closes the same way other status panels do (close button / selecting something else)
+- [x] Component test covers panel content for a Tower-Detected Fire fixture
 
 ### Blocked by
 

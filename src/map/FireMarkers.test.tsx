@@ -1,6 +1,6 @@
-import { render } from '@testing-library/react'
+import { fireEvent, render } from '@testing-library/react'
 import { MapContainer } from 'react-leaflet'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { FireMarkers } from './FireMarkers'
 import type { FireRuntimeState } from '../engine/types'
 
@@ -20,10 +20,14 @@ const towerDetectedFire: FireRuntimeState = {
   detectedAtSimSeconds: 0,
 }
 
-function renderMarkers(fires: Record<string, FireRuntimeState>, groundTruthViewEnabled: boolean) {
+function renderMarkers(
+  fires: Record<string, FireRuntimeState>,
+  groundTruthViewEnabled: boolean,
+  onSelect: (fire: FireRuntimeState) => void = vi.fn(),
+) {
   return render(
     <MapContainer center={[64.5644, 26.4947]} zoom={9}>
-      <FireMarkers fires={fires} groundTruthViewEnabled={groundTruthViewEnabled} />
+      <FireMarkers fires={fires} groundTruthViewEnabled={groundTruthViewEnabled} onSelect={onSelect} />
     </MapContainer>,
   )
 }
@@ -74,5 +78,25 @@ describe('FireMarkers', () => {
     renderMarkers({ 'fire-2': towerDetectedFire }, true)
 
     expect(document.querySelectorAll('.event-icon')).toHaveLength(1)
+  })
+})
+
+describe('FireMarkers click handling (issue T)', () => {
+  it('reports the clicked Fire via onSelect for a Tower-Detected Fire', () => {
+    const onSelect = vi.fn()
+    renderMarkers({ 'fire-2': towerDetectedFire }, false, onSelect)
+
+    fireEvent.click(document.querySelector('.event-icon-fire') as Element)
+
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith(towerDetectedFire)
+  })
+
+  it('does not call onSelect when an Undetected Fire (visible only in Ground Truth View) is clicked', () => {
+    const onSelect = vi.fn()
+    renderMarkers({ 'fire-1': undetectedFire }, true, onSelect)
+
+    fireEvent.click(document.querySelector('.event-icon-fire') as Element)
+
+    expect(onSelect).not.toHaveBeenCalled()
   })
 })

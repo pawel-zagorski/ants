@@ -8,6 +8,7 @@ import { DatalinkLines } from './DatalinkLines'
 import { EventMarkers } from './EventMarkers'
 import { EventPanel } from './EventPanel'
 import { FireMarkers } from './FireMarkers'
+import { FirePanel } from './FirePanel'
 import { GroundTruthToggle } from './GroundTruthToggle'
 import { ReturnEnvelope } from './ReturnEnvelope'
 import { WindIndicator } from './WindIndicator'
@@ -71,14 +72,23 @@ function isDroneAsset(asset: Asset): asset is Drone {
  * `scenario` is only ever passed in once a Scenario has been
  * loaded/selected, the Wind indicator (issue P, see `WindIndicator`) is
  * always shown alongside the other bottom-left controls, with no separate
- * loaded-check needed.
+ * loaded-check needed. Clicking a clickable (non-`'undetected'`) Fire
+ * marker instead opens `FirePanel` (issue T): its read-only Detection
+ * Status (detecting Tower id/time, current tier) — no dispatch UI on this
+ * panel yet, that's issue U.
  */
 export function RokuaMap({ world, scenario }: RokuaMapProps) {
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null)
-  // Mutually exclusive with `selectedAssetId` (see the two `onSelect`
-  // handlers below) — only one status/detection panel is ever open at a
-  // time, mirroring `AssetPanel`'s single-panel UX for Events too.
+  // Mutually exclusive with `selectedAssetId`/`selectedFireId` (see the
+  // three `onSelect` handlers below) — only one status/detection panel is
+  // ever open at a time, mirroring `AssetPanel`'s single-panel UX for
+  // Events/Fires too.
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
+  // Mirrors `selectedEventId` (issue O), but for Fire (issue T) — kept as
+  // its own separate piece of state rather than a shared "selected
+  // detection id" (ADR-0004: Fire is not a kind of Event, so its
+  // detection-panel-open state stays its own concept too).
+  const [selectedFireId, setSelectedFireId] = useState<string | null>(null)
   const [groundTruthViewEnabled, setGroundTruthViewEnabled] = useState(false)
   const clock = useSimulationClock(world, scenario)
   const liveWorld = useMemo(() => withDronePositions(world, clock.simulationState), [world, clock.simulationState])
@@ -87,6 +97,7 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
   // they change, rather than the stale snapshot from the click that opened it.
   const selectedAsset = selectedAssetId ? allAssets(liveWorld).find((asset) => asset.id === selectedAssetId) ?? null : null
   const selectedEvent = selectedEventId ? clock.simulationState.events[selectedEventId] ?? null : null
+  const selectedFire = selectedFireId ? clock.simulationState.fires[selectedFireId] ?? null : null
   // The Return Envelope (issue K) is only shown while a Drone's status
   // panel is open — mirrors `AssetPanel`'s own conditional-render pattern
   // above, and reads the same live, shrinking-over-time
@@ -110,6 +121,7 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
         onSelect={(asset) => {
           setSelectedAssetId(asset.id)
           setSelectedEventId(null)
+          setSelectedFireId(null)
         }}
       />
       <EventMarkers
@@ -118,9 +130,18 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
         onSelect={(event) => {
           setSelectedEventId(event.id)
           setSelectedAssetId(null)
+          setSelectedFireId(null)
         }}
       />
-      <FireMarkers fires={clock.simulationState.fires} groundTruthViewEnabled={groundTruthViewEnabled} />
+      <FireMarkers
+        fires={clock.simulationState.fires}
+        groundTruthViewEnabled={groundTruthViewEnabled}
+        onSelect={(fire) => {
+          setSelectedFireId(fire.id)
+          setSelectedAssetId(null)
+          setSelectedEventId(null)
+        }}
+      />
       {selectedAsset && isDroneAsset(selectedAsset) && selectedDroneRemainingEnduranceSimSeconds !== undefined && (
         <ReturnEnvelope
           drone={selectedAsset}
@@ -144,6 +165,13 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
           drones={world.drones}
           onSend={(droneId) => clock.sendDrone(droneId, selectedEvent.id)}
           onClose={() => setSelectedEventId(null)}
+        />
+      )}
+      {selectedFire && (
+        <FirePanel
+          fire={selectedFire}
+          startDateTimeIso={scenario.startDateTimeIso}
+          onClose={() => setSelectedFireId(null)}
         />
       )}
       <div className="bottom-controls">
