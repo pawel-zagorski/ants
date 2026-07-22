@@ -105,6 +105,14 @@ function collectBaseStationIssues(value: unknown, path: string, issues: string[]
   }
 }
 
+/** Validates an optional positive-number field, pushing an issue only when the field is present but invalid. */
+function collectOptionalPositiveNumberIssues(value: unknown, path: string, issues: string[]): void {
+  if (value === undefined) return
+  if (!isFiniteNumber(value) || value <= 0) {
+    issues.push(`${path} must be a positive finite number when provided`)
+  }
+}
+
 function collectDroneIssues(value: unknown, path: string, issues: string[]): void {
   const drone = collectCommonAssetIssues(value, path, issues)
   if (!drone) return
@@ -112,6 +120,8 @@ function collectDroneIssues(value: unknown, path: string, issues: string[]): voi
     issues.push(`${path}.type must be one of ${DRONE_TYPES.join(', ')}`)
   }
   collectStringFieldIssues(drone.homeBaseStationId, `${path}.homeBaseStationId`, issues)
+  collectOptionalPositiveNumberIssues(drone.patrolRadiusMeters, `${path}.patrolRadiusMeters`, issues)
+  collectOptionalPositiveNumberIssues(drone.patrolSpeedMetersPerSecond, `${path}.patrolSpeedMetersPerSecond`, issues)
 }
 
 /** Validates each element of an array field with a per-item validator, or records that it isn't an array. */

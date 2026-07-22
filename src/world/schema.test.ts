@@ -76,6 +76,53 @@ describe('parseWorld', () => {
     expect(() => parseWorld(badDrone)).toThrow(/type/)
   })
 
+  it('accepts a Drone with optional patrol parameter overrides', () => {
+    const withPatrolParams = {
+      ...validWorld,
+      drones: [
+        {
+          id: 'drone-1',
+          type: 'Quadrocopter',
+          position: { lat: 64.451, lng: 26.301 },
+          homeBaseStationId: 'base-1',
+          patrolRadiusMeters: 400,
+          patrolSpeedMetersPerSecond: 10,
+        },
+      ],
+    }
+    expect(parseWorld(withPatrolParams)).toEqual(withPatrolParams)
+  })
+
+  it('throws when a Drone patrol parameter override is not a positive number', () => {
+    const badPatrolRadius = {
+      ...validWorld,
+      drones: [
+        {
+          id: 'drone-1',
+          type: 'Quadrocopter',
+          position: { lat: 64.451, lng: 26.301 },
+          homeBaseStationId: 'base-1',
+          patrolRadiusMeters: -5,
+        },
+      ],
+    }
+    expect(() => parseWorld(badPatrolRadius)).toThrow(/patrolRadiusMeters/)
+
+    const badPatrolSpeed = {
+      ...validWorld,
+      drones: [
+        {
+          id: 'drone-1',
+          type: 'Quadrocopter',
+          position: { lat: 64.451, lng: 26.301 },
+          homeBaseStationId: 'base-1',
+          patrolSpeedMetersPerSecond: 'fast',
+        },
+      ],
+    }
+    expect(() => parseWorld(badPatrolSpeed)).toThrow(/patrolSpeedMetersPerSecond/)
+  })
+
   it('throws when a Drone references a homeBaseStationId that does not exist', () => {
     const danglingReference = {
       ...validWorld,

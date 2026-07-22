@@ -25,12 +25,21 @@ export interface BaseStation {
   position: LatLng
 }
 
-/** A mobile sensor asset — a Quadrocopter or a Fixed-Wing Drone — homed at a Base Station. */
+/**
+ * A mobile sensor asset — a Quadrocopter or a Fixed-Wing Drone — homed at a
+ * Base Station. `patrolRadiusMeters`/`patrolSpeedMetersPerSecond` are
+ * optional per-Drone overrides of the simulation engine's type-based patrol
+ * defaults (see `engine/advanceSimulation.ts`) — omit them to use the
+ * default tight (Quadrocopter) or long-perimeter (Fixed-Wing) loop for that
+ * Drone's type.
+ */
 export interface Drone {
   id: string
   type: DroneType
   position: LatLng
   homeBaseStationId: string
+  patrolRadiusMeters?: number
+  patrolSpeedMetersPerSecond?: number
 }
 
 /** Any single World asset that can be rendered as a marker and clicked for a status panel. */

@@ -8,10 +8,13 @@ export interface AssetMarkersProps {
 }
 
 /**
- * Renders every Tower, Base Station, and Drone in `world` at its fixed
+ * Renders every Tower, Base Station, and Drone in `world` at its current
  * position, each with a marker icon distinct per asset type. Clicking a
- * marker reports that asset via `onSelect` — this slice has no simulation
- * engine, so positions never change after the World loads.
+ * marker reports that asset via `onSelect`. This component has no knowledge
+ * of the simulation engine — Towers and Base Stations are always static,
+ * and Drone positions only move if the caller passes a `world` whose Drone
+ * positions have already been derived from a `SimulationState` (see
+ * `engine/liveWorld.ts`, wired up in `RokuaMap`).
  */
 export function AssetMarkers({ world, onSelect }: AssetMarkersProps) {
   const assets: Asset[] = [...world.towers, ...world.baseStations, ...world.drones]

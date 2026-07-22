@@ -59,7 +59,12 @@ export function initializeSimulationState(world: World): SimulationState {
 
   for (const drone of world.drones) {
     const homeBaseStation = findHomeBaseStation(world, drone.homeBaseStationId)
-    const { radiusMeters, linearSpeedMetersPerSecond } = PATROL_PARAMS_BY_DRONE_TYPE[drone.type]
+    const typeDefaults = PATROL_PARAMS_BY_DRONE_TYPE[drone.type]
+    // A World author can override either patrol parameter per-Drone (the PRD's
+    // documented Drone "patrol parameters" field); an omitted field falls back
+    // to the DroneType default below.
+    const radiusMeters = drone.patrolRadiusMeters ?? typeDefaults.radiusMeters
+    const linearSpeedMetersPerSecond = drone.patrolSpeedMetersPerSecond ?? typeDefaults.linearSpeedMetersPerSecond
     const phaseOffsetRadians = phaseOffsetForDroneId(drone.id)
     const patrolCenter = homeBaseStation.position
 

@@ -1,14 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { withDronePositions } from './liveWorld'
 import { initializeSimulationState, advanceSimulation } from './advanceSimulation'
+import { createWorldFixture } from '../test/worldFixtures'
 import type { World } from '../world/types'
 
-const world: World = {
-  bounds: { southWest: { lat: 64.3398, lng: 25.9718 }, northEast: { lat: 64.789, lng: 27.0176 } },
+const world: World = createWorldFixture({
   towers: [
     { id: 'tower-1', type: 'Tower', position: { lat: 64.7, lng: 26.2 }, detectionRadiusMeters: 15000 },
   ],
-  baseStations: [{ id: 'base-1', type: 'BaseStation', position: { lat: 64.5, lng: 26.25 } }],
   drones: [
     {
       id: 'quadrocopter-1',
@@ -17,7 +16,7 @@ const world: World = {
       homeBaseStationId: 'base-1',
     },
   ],
-}
+})
 
 describe('withDronePositions', () => {
   it('replaces each Drone position with its current simulated position, leaving Towers/Base Stations untouched', () => {

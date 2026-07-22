@@ -1,12 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { advanceSimulation, initializeSimulationState } from './advanceSimulation'
 import { haversineDistanceMeters } from '../test/haversineDistanceMeters'
+import { createWorldFixture } from '../test/worldFixtures'
 import type { World } from '../world/types'
 
-const world: World = {
-  bounds: { southWest: { lat: 64.3398, lng: 25.9718 }, northEast: { lat: 64.789, lng: 27.0176 } },
-  towers: [],
-  baseStations: [{ id: 'base-1', type: 'BaseStation', position: { lat: 64.5, lng: 26.25 } }],
+const world: World = createWorldFixture({
   drones: [
     {
       id: 'quadrocopter-1',
@@ -21,7 +19,7 @@ const world: World = {
       homeBaseStationId: 'base-1',
     },
   ],
-}
+})
 
 describe('initializeSimulationState', () => {
   it('creates one patrol entry per Drone, keyed by Drone id', () => {
@@ -37,6 +35,29 @@ describe('initializeSimulationState', () => {
     for (const droneId of ['quadrocopter-1', 'fixed-wing-1']) {
       expect(state.dronePatrol[droneId].patrolCenter).toEqual({ lat: 64.5, lng: 26.25 })
     }
+  })
+})
+
+describe('initializeSimulationState patrol parameter overrides', () => {
+  it("uses a Drone's own patrolRadiusMeters/patrolSpeedMetersPerSecond from the World when provided, instead of the DroneType default", () => {
+    const worldWithOverride: World = {
+      ...world,
+      drones: [
+        {
+          id: 'quadrocopter-1',
+          type: 'Quadrocopter',
+          position: { lat: 64.5, lng: 26.25 },
+          homeBaseStationId: 'base-1',
+          patrolRadiusMeters: 999,
+          patrolSpeedMetersPerSecond: 3,
+        },
+      ],
+    }
+
+    const state = initializeSimulationState(worldWithOverride)
+
+    expect(state.dronePatrol['quadrocopter-1'].patrolRadiusMeters).toBe(999)
+    expect(state.dronePatrol['quadrocopter-1'].angularSpeedRadiansPerSecond).toBeCloseTo(3 / 999)
   })
 })
 
