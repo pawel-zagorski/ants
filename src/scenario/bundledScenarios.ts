@@ -31,7 +31,7 @@ export const BUNDLED_SCENARIOS: readonly BundledScenarioListing[] = [
   {
     id: 'wildfire-outbreak',
     name: 'Wildfire Outbreak',
-    description: 'A Tower spots a Fire and dispatches a Drone to investigate before it resolves.',
+    description: 'A Tower spots a Fire and keeps tracking it.',
     url: '/scenario-wildfire-outbreak.json',
   },
   {

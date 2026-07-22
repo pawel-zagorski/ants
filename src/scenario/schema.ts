@@ -1,7 +1,7 @@
 import { collectLatLngIssues, collectStringFieldIssues, isFiniteNumber, isPlainObject } from '../validation/jsonValidation'
-import type { EventType, Scenario, ScenarioEvent } from './types'
+import type { EventType, Scenario, ScenarioEntry } from './types'
 
-const EVENT_TYPES: readonly EventType[] = ['Fire', 'PersonSighting', 'FallenTree']
+const EVENT_TYPES: readonly EventType[] = ['PersonSighting', 'FallenTree']
 
 /**
  * Thrown when `scenario-*.json` content does not match the documented
@@ -19,16 +19,33 @@ export class ScenarioValidationError extends Error {
   }
 }
 
-function collectScenarioEventIssues(value: unknown, path: string, issues: string[]): void {
-  if (!isPlainObject(value)) {
-    issues.push(`${path} must be an object`)
-    return
+/**
+ * Validates a Fire ignition entry (ADR-0004): just `id`/`position`/
+ * `spawnAtSimSeconds`, and — unlike a Person Sighting/Fallen Tree Event —
+ * no `durationSimSeconds` at all, since a Fire never auto-resolves.
+ * Rejecting its presence outright (rather than silently ignoring it) turns
+ * a likely scenario-authoring mistake (copy-pasting an Event entry and
+ * forgetting to drop the field) into a loud validation error.
+ */
+function collectFireIgnitionIssues(value: Record<string, unknown>, path: string, issues: string[]): void {
+  collectStringFieldIssues(value.id, `${path}.id`, issues)
+  collectLatLngIssues(value.position, `${path}.position`, issues)
+
+  if (!isFiniteNumber(value.spawnAtSimSeconds) || value.spawnAtSimSeconds < 0) {
+    issues.push(`${path}.spawnAtSimSeconds must be a non-negative finite number`)
   }
 
+  if (value.durationSimSeconds !== undefined) {
+    issues.push(`${path}.durationSimSeconds must not be present on a Fire ignition entry — Fires never auto-resolve`)
+  }
+}
+
+/** Validates a Person Sighting/Fallen Tree Event entry — unchanged from before ADR-0004's Fire split. */
+function collectEventIssues(value: Record<string, unknown>, path: string, issues: string[]): void {
   collectStringFieldIssues(value.id, `${path}.id`, issues)
 
   if (!EVENT_TYPES.includes(value.type as EventType)) {
-    issues.push(`${path}.type must be one of ${EVENT_TYPES.join(', ')}`)
+    issues.push(`${path}.type must be one of ${EVENT_TYPES.join(', ')} or Fire`)
   }
 
   collectLatLngIssues(value.position, `${path}.position`, issues)
@@ -45,22 +62,41 @@ function collectScenarioEventIssues(value: unknown, path: string, issues: string
   }
 }
 
-function collectDuplicateIdIssues(events: ScenarioEvent[], issues: string[]): void {
+/**
+ * Dispatches a single `events[]` entry to Fire-ignition or Event
+ * validation by `type`, so the two are validated distinctly (ADR-0004)
+ * even though they share the same JSON array.
+ */
+function collectScenarioEntryIssues(value: unknown, path: string, issues: string[]): void {
+  if (!isPlainObject(value)) {
+    issues.push(`${path} must be an object`)
+    return
+  }
+
+  if (value.type === 'Fire') {
+    collectFireIgnitionIssues(value, path, issues)
+    return
+  }
+
+  collectEventIssues(value, path, issues)
+}
+
+function collectDuplicateIdIssues(entries: ScenarioEntry[], issues: string[]): void {
   const seenIds = new Set<string>()
-  events.forEach((event) => {
-    if (typeof event.id !== 'string') return
-    if (seenIds.has(event.id)) {
-      issues.push(`duplicate event id "${event.id}" — every Event id must be unique within a Scenario`)
+  entries.forEach((entry) => {
+    if (typeof entry.id !== 'string') return
+    if (seenIds.has(entry.id)) {
+      issues.push(`duplicate event id "${entry.id}" — every Event/Fire id must be unique within a Scenario`)
     }
-    seenIds.add(event.id)
+    seenIds.add(entry.id)
   })
 }
 
 /**
  * Validates and parses raw `scenario-*.json` content into a {@link
  * Scenario}. Throws a {@link ScenarioValidationError} listing every issue
- * found when the input does not match the documented schema (ADR-0002) —
- * never returns a partially-valid Scenario.
+ * found when the input does not match the documented schema (ADR-0002,
+ * ADR-0004) — never returns a partially-valid Scenario.
  */
 export function parseScenario(data: unknown): Scenario {
   const issues: string[] = []
@@ -74,10 +110,10 @@ export function parseScenario(data: unknown): Scenario {
     throw new ScenarioValidationError(issues)
   }
 
-  data.events.forEach((event, index) => collectScenarioEventIssues(event, `events[${index}]`, issues))
+  data.events.forEach((entry, index) => collectScenarioEntryIssues(entry, `events[${index}]`, issues))
 
   if (issues.length === 0) {
-    collectDuplicateIdIssues(data.events as ScenarioEvent[], issues)
+    collectDuplicateIdIssues(data.events as ScenarioEntry[], issues)
   }
 
   if (issues.length > 0) {

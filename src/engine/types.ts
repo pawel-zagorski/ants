@@ -1,5 +1,5 @@
 import type { LatLng } from '../map/geo'
-import type { EventType, ScenarioEvent } from '../scenario/types'
+import type { EventType, ScenarioEvent, ScenarioFireIgnition } from '../scenario/types'
 import type { DroneType } from '../world/types'
 
 /**
@@ -79,8 +79,8 @@ export type EventStatus = 'undetected' | 'detected' | 'resolved'
  * both set once, the tick an Event first flips to `'detected'` (the Tower
  * or Drone id whose radius it fell within, and the absolute
  * `elapsedSimSeconds` at that moment), and then carried forward unchanged —
- * `detectedByAssetId` is what lets a Tower's status panel show "which Fire
- * Event am I currently tracking"; `detectedAtSimSeconds` is what lets
+ * `detectedByAssetId` is what lets a Drone's status panel show which Event
+ * it's currently assigned to; `detectedAtSimSeconds` is what lets
  * `advanceSimulation` know when `durationSimSeconds` (counted from
  * Detection, not from spawn — see PRD "Event model" Implementation
  * Decisions) has elapsed, flipping `status` to `'resolved'`. An Event with
@@ -100,23 +100,65 @@ export interface EventRuntimeState {
 }
 
 /**
+ * A Fire's lifecycle, per `CONTEXT.md`/ADR-0004: `Undetected →
+ * Tower-Detected → Investigated` — deliberately not `EventStatus`'s
+ * `Undetected → Detected → Resolved`, since a Fire never auto-resolves and
+ * has a distinct middle tier name (a Tower, specifically, is what first
+ * moves it out of `'undetected'` — see `detectingAssetIdForFire` in
+ * `advanceSimulation.ts`). `'investigated'` is not yet reachable in this
+ * slice (issue Q is a pure data-model split; the orbit/investigate
+ * mechanics that would ever produce it are issues U/V) but is carried in
+ * the type now so those later issues are additive, not a breaking change
+ * here.
+ */
+export type FireTier = 'undetected' | 'towerDetected' | 'investigated'
+
+/**
+ * A single spawned Fire's live engine state: its scripted identity/position
+ * (copied from the Scenario's {@link ScenarioFireIgnition}) plus its
+ * current `tier`. Only present in `SimulationState.fires` once
+ * `elapsedSimSeconds` has reached its `spawnAtSimSeconds` — mirrors
+ * `EventRuntimeState`, but kept as a wholly separate interface (ADR-0004:
+ * Fire is not a kind of Event) rather than folding optional
+ * Fire-only fields onto `EventRuntimeState`. `detectedByAssetId`/
+ * `detectedAtSimSeconds` are set once, the tick a Fire first flips out of
+ * `'undetected'` (the Tower or Drone id whose radius it fell within, per
+ * `CONTEXT.md`'s Detection rule — a Drone can also detect a Fire, not only
+ * a Tower), and then carried forward unchanged, same sticky/monotonic
+ * pattern as `EventRuntimeState`. Deliberately has no `durationSimSeconds`
+ * and no resolved-equivalent tier — a Fire never auto-resolves.
+ */
+export interface FireRuntimeState {
+  id: string
+  position: LatLng
+  tier: FireTier
+  spawnAtSimSeconds: number
+  detectedByAssetId?: string
+  detectedAtSimSeconds?: number
+}
+
+/**
  * The engine's full serializable state: every Drone's patrol loop and
  * derived position keyed by Drone id, every Drone's dispatch/investigate
  * activity keyed by Drone id, every Tower's fixed detection data keyed by
- * Tower id, every currently-spawned Event keyed by Event id, plus the
- * simulated time it was last computed for. `scenarioEvents` is the
- * Scenario's full, unchanging Event script (carried through unmodified from
- * `initializeSimulationState`, mirroring how each Drone's patrol parameters
- * are carried through) — it's what `advanceSimulation` re-derives `events`
- * from on every call. Unlike Drone position while patrolling (a closed-form
- * function of absolute `elapsedSimSeconds` alone), an Event's `status` and
- * a Drone's `droneActivity` legitimately depend on history:
- * `advanceSimulation` reads the incoming `events[id]`/`droneActivity[id]`
- * from this same state as memory — for Events, so it never un-detects one a
- * Drone has since flown away from (sticky status); for Drones, so
- * "how long has this Drone been investigating" and "which Drone is already
- * unavailable" can be computed tick-over-tick. Contains no reference to
- * React/Leaflet/wall-clock time — see `advanceSimulation`.
+ * Tower id, every currently-spawned Event keyed by Event id, every
+ * currently-spawned Fire keyed by Fire id, plus the simulated time it was
+ * last computed for. `scenarioEvents`/`scenarioFireIgnitions` are the
+ * Scenario's full, unchanging Event/Fire-ignition scripts (carried through
+ * unmodified from `initializeSimulationState`, mirroring how each Drone's
+ * patrol parameters are carried through) — they're what `advanceSimulation`
+ * re-derives `events`/`fires` from on every call. `fires` is a sibling map
+ * to `events`, not folded into it (ADR-0004: Fire is not a kind of Event).
+ * Unlike Drone position while patrolling (a closed-form function of
+ * absolute `elapsedSimSeconds` alone), an Event's `status`, a Fire's
+ * `tier`, and a Drone's `droneActivity` legitimately depend on history:
+ * `advanceSimulation` reads the incoming `events[id]`/`fires[id]`/
+ * `droneActivity[id]` from this same state as memory — for Events/Fires, so
+ * neither ever un-detects one a Drone/Tower has since moved out of range of
+ * (sticky status/tier); for Drones, so "how long has this Drone been
+ * investigating" and "which Drone is already unavailable" can be computed
+ * tick-over-tick. Contains no reference to React/Leaflet/wall-clock time —
+ * see `advanceSimulation`.
  */
 export interface SimulationState {
   elapsedSimSeconds: number
@@ -124,5 +166,7 @@ export interface SimulationState {
   droneActivity: Record<string, DroneActivityState>
   towerDetection: Record<string, TowerDetectionState>
   scenarioEvents: ScenarioEvent[]
+  scenarioFireIgnitions: ScenarioFireIgnition[]
   events: Record<string, EventRuntimeState>
+  fires: Record<string, FireRuntimeState>
 }
