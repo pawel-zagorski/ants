@@ -7,6 +7,7 @@ import { AssetPanel } from './AssetPanel'
 import { DatalinkLines } from './DatalinkLines'
 import { EventMarkers } from './EventMarkers'
 import { EventPanel } from './EventPanel'
+import { FireFootprintLayer } from './FireFootprintLayer'
 import { FireMarkers } from './FireMarkers'
 import { GroundTruthToggle } from './GroundTruthToggle'
 import { ReturnEnvelope } from './ReturnEnvelope'
@@ -71,7 +72,12 @@ function isDroneAsset(asset: Asset): asset is Drone {
  * `scenario` is only ever passed in once a Scenario has been
  * loaded/selected, the Wind indicator (issue P, see `WindIndicator`) is
  * always shown alongside the other bottom-left controls, with no separate
- * loaded-check needed.
+ * loaded-check needed. Ground Truth View also renders each Fire's real,
+ * live Fire Footprint (issue R, `FireFootprintLayer`) as a growing
+ * hex-tile mosaic, biased downwind by `scenario.wind` — hidden entirely in
+ * the default view, which shows only `FireMarkers`' plain marker/tier icon
+ * until a later issue (S) adds the Uncertainty Ellipse/Confirmed Shape
+ * default-view treatments.
  */
 export function RokuaMap({ world, scenario }: RokuaMapProps) {
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null)
@@ -119,6 +125,12 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
           setSelectedEventId(event.id)
           setSelectedAssetId(null)
         }}
+      />
+      <FireFootprintLayer
+        fires={clock.simulationState.fires}
+        wind={scenario.wind}
+        elapsedSimSeconds={clock.simulationState.elapsedSimSeconds}
+        groundTruthViewEnabled={groundTruthViewEnabled}
       />
       <FireMarkers fires={clock.simulationState.fires} groundTruthViewEnabled={groundTruthViewEnabled} />
       {selectedAsset && isDroneAsset(selectedAsset) && selectedDroneRemainingEnduranceSimSeconds !== undefined && (
