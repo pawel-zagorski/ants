@@ -1,3 +1,4 @@
+import { collectLatLngIssues, collectStringFieldIssues, isFiniteNumber, isPlainObject } from '../validation/jsonValidation'
 import type { Asset, BaseStation, Drone, DroneType, Tower, World } from './types'
 
 const DRONE_TYPES: readonly DroneType[] = ['Quadrocopter', 'FixedWingDrone']
@@ -14,28 +15,6 @@ export class WorldValidationError extends Error {
     super(`world.json failed validation:\n- ${issues.join('\n- ')}`)
     this.name = 'WorldValidationError'
     this.issues = issues
-  }
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value)
-}
-
-/** Validates a `{ lat, lng }` pair, pushing any issues found under `path`. */
-function collectLatLngIssues(value: unknown, path: string, issues: string[]): void {
-  if (!isPlainObject(value)) {
-    issues.push(`${path} must be an object with numeric lat/lng`)
-    return
-  }
-  if (!isFiniteNumber(value.lat) || value.lat < -90 || value.lat > 90) {
-    issues.push(`${path}.lat must be a finite number between -90 and 90`)
-  }
-  if (!isFiniteNumber(value.lng) || value.lng < -180 || value.lng > 180) {
-    issues.push(`${path}.lng must be a finite number between -180 and 180`)
   }
 }
 
@@ -57,12 +36,6 @@ function collectBoundsIssues(value: unknown, issues: string[]): void {
     (southWest.lat >= northEast.lat || southWest.lng >= northEast.lng)
   ) {
     issues.push('bounds.southWest must be strictly south and west of bounds.northEast')
-  }
-}
-
-function collectStringFieldIssues(value: unknown, path: string, issues: string[]): void {
-  if (typeof value !== 'string' || value.trim().length === 0) {
-    issues.push(`${path} must be a non-empty string`)
   }
 }
 

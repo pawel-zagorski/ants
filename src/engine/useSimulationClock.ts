@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { advanceSimulation, initializeSimulationState } from './advanceSimulation'
 import type { SimulationState } from './types'
+import type { Scenario } from '../scenario/types'
 import type { World } from '../world/types'
 
 /** Speed multipliers exposed on the Simulation Clock UI (wall-clock seconds -> simulated seconds). */
@@ -29,8 +30,8 @@ export interface SimulationClock {
  * that bridges wall-clock time and React to the engine — `advanceSimulation`
  * itself stays free of both (see ADR/PRD "Simulation engine").
  */
-export function useSimulationClock(world: World): SimulationClock {
-  const baseState = useMemo(() => initializeSimulationState(world), [world])
+export function useSimulationClock(world: World, scenario: Scenario): SimulationClock {
+  const baseState = useMemo(() => initializeSimulationState(world, scenario), [world, scenario])
   const [elapsedSimSeconds, setElapsedSimSeconds] = useState(0)
   const [isRunning, setIsRunning] = useState(false)
   const [speedMultiplier, setSpeedMultiplier] = useState<SimulationSpeedMultiplier>(1)

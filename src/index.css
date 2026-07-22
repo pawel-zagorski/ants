@@ -112,6 +112,46 @@ body,
   white-space: pre-wrap;
 }
 
+/* Scenario start screen (issue D). */
+.scenario-select-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 100vh;
+  width: 100vw;
+  font-family: system-ui, sans-serif;
+  padding: 0 24px;
+  text-align: center;
+}
+
+.scenario-select-screen select {
+  font-size: 15px;
+  padding: 6px 10px;
+}
+
+.scenario-select-description {
+  max-width: 420px;
+  color: #4b5563;
+  font-size: 14px;
+}
+
+.scenario-select-screen button {
+  cursor: pointer;
+  border: none;
+  border-radius: 6px;
+  background: #1d4ed8;
+  color: #ffffff;
+  padding: 8px 24px;
+  font-size: 15px;
+}
+
+.scenario-select-screen button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 /* Simulation Clock UI (issue C) — play/pause/speed/step controls. */
 .simulation-clock-panel {
   position: absolute;
@@ -158,4 +198,60 @@ body,
   background: #1d4ed8;
   color: #ffffff;
   border-color: #1d4ed8;
+}
+
+/* Event markers (issue D) — shape + color + label, mirroring the asset
+   icon convention. `.event-icon-undetected` is the Ground Truth View's
+   faded/dashed treatment for Events the sensor network hasn't Detected. */
+.event-icon-shape {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: #ffffff;
+  font-family: system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+.event-icon-shape-fire {
+  background: #dc2626;
+  clip-path: polygon(50% 0%, 80% 35%, 100% 100%, 0% 100%, 20% 35%);
+}
+
+.event-icon-shape-person-sighting {
+  background: #7c3aed;
+  border-radius: 50%;
+}
+
+.event-icon-shape-fallen-tree {
+  background: #92400e;
+  clip-path: polygon(10% 25%, 90% 0%, 100% 75%, 20% 100%);
+}
+
+.event-icon-undetected .event-icon-shape {
+  opacity: 0.55;
+  outline: 2px dashed #374151;
+  outline-offset: 2px;
+}
+
+/* Ground Truth View toggle (issue D) — sits alongside the Simulation Clock panel. */
+.ground-truth-toggle {
+  position: absolute;
+  bottom: 16px;
+  left: 260px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  font-family: system-ui, sans-serif;
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
 }

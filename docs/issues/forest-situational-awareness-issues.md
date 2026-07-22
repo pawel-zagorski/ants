@@ -71,7 +71,7 @@ B
 
 ---
 
-## [ ] D — Scenario loading, selection UI, and Ground Truth event spawning
+## [x] D — Scenario loading, selection UI, and Ground Truth event spawning
 
 ### What to build
 
@@ -79,11 +79,11 @@ Define the `scenario-*.json` schema (a list of Events: type, position, `spawnAtS
 
 ### Acceptance criteria
 
-- [ ] `scenario-*.json` schema documented and validated on load
-- [ ] Start screen lists at least one bundled (placeholder) scenario and a Play button
-- [ ] Events appear on the map at their scripted `spawnAtSimSeconds`, in the correct position, only when Ground Truth View is enabled
-- [ ] Default view (Ground Truth off) shows no Events, regardless of scenario progress
-- [ ] Unit tests cover: an Event does not appear before its spawn time, and does appear at/after it
+- [x] `scenario-*.json` schema documented and validated on load
+- [x] Start screen lists at least one bundled (placeholder) scenario and a Play button
+- [x] Events appear on the map at their scripted `spawnAtSimSeconds`, in the correct position, only when Ground Truth View is enabled
+- [x] Default view (Ground Truth off) shows no Events, regardless of scenario progress
+- [x] Unit tests cover: an Event does not appear before its spawn time, and does appear at/after it
 
 ### Blocked by
 

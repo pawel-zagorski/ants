@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { withDronePositions } from './liveWorld'
 import { initializeSimulationState, advanceSimulation } from './advanceSimulation'
 import { createWorldFixture } from '../test/worldFixtures'
+import type { Scenario } from '../scenario/types'
 import type { World } from '../world/types'
 
 const world: World = createWorldFixture({
@@ -18,9 +19,11 @@ const world: World = createWorldFixture({
   ],
 })
 
+const emptyScenario: Scenario = { events: [] }
+
 describe('withDronePositions', () => {
   it('replaces each Drone position with its current simulated position, leaving Towers/Base Stations untouched', () => {
-    const state = advanceSimulation(initializeSimulationState(world), 1234)
+    const state = advanceSimulation(initializeSimulationState(world, emptyScenario), 1234)
 
     const liveWorld = withDronePositions(world, state)
 
@@ -30,7 +33,7 @@ describe('withDronePositions', () => {
   })
 
   it('does not mutate the original World', () => {
-    const state = advanceSimulation(initializeSimulationState(world), 1234)
+    const state = advanceSimulation(initializeSimulationState(world, emptyScenario), 1234)
     const originalDronePosition = { ...world.drones[0].position }
 
     withDronePositions(world, state)

@@ -1,0 +1,16 @@
+{
+  "events": [
+    {
+      "id": "quiet-day-fallen-tree-1",
+      "type": "FallenTree",
+      "position": { "lat": 64.512, "lng": 26.27 },
+      "spawnAtSimSeconds": 30
+    },
+    {
+      "id": "quiet-day-fallen-tree-2",
+      "type": "FallenTree",
+      "position": { "lat": 64.635, "lng": 26.68 },
+      "spawnAtSimSeconds": 120
+    }
+  ]
+}
