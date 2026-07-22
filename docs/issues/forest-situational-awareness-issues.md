@@ -341,7 +341,7 @@ L
 
 ---
 
-## [ ] N — Scenario Epoch: calendar date/time schema + display
+## [x] N — Scenario Epoch: calendar date/time schema + display
 
 ### Parent
 
@@ -353,11 +353,11 @@ Add `startDateTimeIso` (an ISO 8601 string) to the scenario schema (`src/scenari
 
 ### Acceptance criteria
 
-- [ ] Scenario schema requires `startDateTimeIso`; validation rejects a scenario missing it or with an unparseable value
-- [ ] A helper function converts epoch + `elapsedSimSeconds` to a calendar `Date`/formatted string; unit-tested for a few known offsets (0s, and a large offset crossing into the next day)
-- [ ] Simulation Clock panel shows the current calendar date/time, live-updating as the clock runs
-- [ ] All three bundled scenarios have a `startDateTimeIso`
-- [ ] Existing tests (`bundledScenarios.integration.test.ts`, scenario schema tests) updated and passing
+- [x] Scenario schema requires `startDateTimeIso`; validation rejects a scenario missing it or with an unparseable value
+- [x] A helper function converts epoch + `elapsedSimSeconds` to a calendar `Date`/formatted string; unit-tested for a few known offsets (0s, and a large offset crossing into the next day)
+- [x] Simulation Clock panel shows the current calendar date/time, live-updating as the clock runs
+- [x] All three bundled scenarios have a `startDateTimeIso`
+- [x] Existing tests (`bundledScenarios.integration.test.ts`, scenario schema tests) updated and passing
 
 ### Blocked by
 

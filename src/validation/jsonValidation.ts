@@ -62,3 +62,17 @@ export function collectStringFieldIssues(value: unknown, path: string, issues: s
     issues.push(`${path} must be a non-empty string`)
   }
 }
+
+/**
+ * Validates that `value` is a non-empty string `Date.parse` can interpret as
+ * a calendar date/time, pushing an issue under `path` if not. Used to
+ * validate a Scenario's `startDateTimeIso` (the Scenario Epoch,
+ * `CONTEXT.md`) — deliberately permissive about exact ISO 8601 strictness
+ * (anything `Date.parse` accepts is accepted) since the engine only ever
+ * needs a valid instant to add `elapsedSimSeconds` to, not to re-serialize.
+ */
+export function collectIsoDateTimeIssues(value: unknown, path: string, issues: string[]): void {
+  if (typeof value !== 'string' || value.trim().length === 0 || Number.isNaN(Date.parse(value))) {
+    issues.push(`${path} must be an ISO 8601 date/time string`)
+  }
+}

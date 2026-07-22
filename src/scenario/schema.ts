@@ -1,4 +1,10 @@
-import { collectLatLngIssues, collectStringFieldIssues, isFiniteNumber, isPlainObject } from '../validation/jsonValidation'
+import {
+  collectIsoDateTimeIssues,
+  collectLatLngIssues,
+  collectStringFieldIssues,
+  isFiniteNumber,
+  isPlainObject,
+} from '../validation/jsonValidation'
 import type { EventType, Scenario, ScenarioEvent } from './types'
 
 const EVENT_TYPES: readonly EventType[] = ['Fire', 'PersonSighting', 'FallenTree']
@@ -68,6 +74,8 @@ export function parseScenario(data: unknown): Scenario {
   if (!isPlainObject(data)) {
     throw new ScenarioValidationError(['scenario file must contain a JSON object with an "events" array'])
   }
+
+  collectIsoDateTimeIssues(data.startDateTimeIso, 'startDateTimeIso', issues)
 
   if (!Array.isArray(data.events)) {
     issues.push('events must be an array')
