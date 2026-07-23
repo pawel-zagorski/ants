@@ -113,7 +113,7 @@ body,
   position: absolute;
   top: 16px;
   right: 16px;
-  z-index: 1000;
+  z-index: 1100;
   width: 220px;
   max-height: calc(100% - 32px);
   padding: 16px;
@@ -331,12 +331,14 @@ body,
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
 }
 
-/* Shared bottom-left bar that holds the clock panel and ground-truth toggle side-by-side. */
+/* Shared bottom-left bar that holds the clock panel and ground-truth toggle
+   side-by-side. Kept below `.asset-panel` (z-index 1100) so an open status
+   panel's actions stay clickable when the two overlap on narrow viewports. */
 .bottom-controls {
   position: absolute;
   bottom: 16px;
   left: 16px;
-  z-index: 1000;
+  z-index: 900;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -939,7 +941,9 @@ body,
     left: 16px;
     right: 16px;
     width: auto;
-    max-height: calc(100% - 24px);
+    /* Leave the bottom-left control stack (~clock + ground truth + wind)
+       uncovered so panel actions and simulation controls stay separate. */
+    max-height: calc(100% - 220px);
   }
 
   .asset-panel-photo {
