@@ -178,6 +178,33 @@ function locationText(entry: EventLogEntry, world: World): string {
 }
 
 /**
+ * The Base Station a recall targets, named directly (e.g. `"Base 2"`) rather
+ * than as a bearing/distance phrase — a `droneRecalledToBase` entry's
+ * `position` IS a Base Station, so `describeLocation` would otherwise read the
+ * awkward `"0.0 km N of Base 2"`. Prefers the entry's own `baseStationId`,
+ * else the nearest Base Station to the entry's `position`. Falls back to the
+ * generic `"nearest base"` when neither is available.
+ */
+function recalledBaseName(entry: EventLogEntry, world: World): string {
+  if (entry.baseStationId) {
+    return prettifyId(entry.baseStationId)
+  }
+  if (!entry.position || world.baseStations.length === 0) {
+    return 'nearest base'
+  }
+  let nearest = world.baseStations[0]
+  let nearestDistanceMeters = distanceMetersBetween(nearest.position, entry.position)
+  for (const baseStation of world.baseStations.slice(1)) {
+    const distanceMeters = distanceMetersBetween(baseStation.position, entry.position)
+    if (distanceMeters < nearestDistanceMeters) {
+      nearestDistanceMeters = distanceMeters
+      nearest = baseStation
+    }
+  }
+  return prettifyId(nearest.id)
+}
+
+/**
  * Builds the human-readable line for one {@link EventLogEntry} by kind,
  * matching ADR-0008 / `CONTEXT.md`'s Event Log wording. Deliberately does
  * NOT bake a `WARNING: ` prefix into warning-severity lines — the panel
@@ -200,7 +227,7 @@ function textForEntry(entry: EventLogEntry, world: World): string {
     case 'droneReturningAfterOrbit':
       return `${droneName(entry)} finished investigating the fire and is returning to base`
     case 'droneRecalledToBase':
-      return `${droneLabel(entry, world)} ordered to return to nearest base ${locationText(entry, world)}`
+      return `${droneLabel(entry, world)} ordered to return to nearest base (${recalledBaseName(entry, world)})`
     case 'droneResumedPatrol':
       return `${droneName(entry)} resumed patrolling`
     case 'droneGrounded':

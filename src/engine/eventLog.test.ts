@@ -390,6 +390,25 @@ describe('One-Way Mission Log Entries (droneDispatchedOneWay → droneLost, both
       simSeconds: MAX_ENDURANCE_SIM_SECONDS,
     })
   })
+
+  it('still emits droneBeganFireOrbit when transit, orbit start, and loss collapse into one tick (S1)', () => {
+    // A single coarse advance jumps the Drone past arrival AND endurance
+    // exhaustion. Per ADR-0008 the orbit-start transition genuinely occurred
+    // (the Drone reaches the Fire before running out), so it must still be
+    // logged — exactly once, before the Lost line — rather than short-circuited.
+    const atDispatch = advanceSimulation(initializeSimulationState(world(), scenario()), DISPATCH_AT_SIM_SECONDS)
+    const dispatched = withManualFireDispatch(atDispatch, 'drone-1', 'fire-1', 'oneWay')
+    const lostState = advanceSimulation(dispatched, MAX_ENDURANCE_SIM_SECONDS)
+
+    const orbit = entriesOfKind(lostState.log, 'droneBeganFireOrbit')
+    expect(orbit).toHaveLength(1)
+    expect(orbit[0]).toMatchObject({ severity: 'info', droneId: 'drone-1', fireId: 'fire-1' })
+
+    const lost = entriesOfKind(lostState.log, 'droneLost')
+    expect(lost).toHaveLength(1)
+    // The orbit start is logged at (or before) the moment of loss, never after.
+    expect(orbit[0].simSeconds).toBeLessThanOrEqual(lost[0].simSeconds)
+  })
 })
 
 describe('Event Log determinism (ADR-0003 / ADR-0008)', () => {

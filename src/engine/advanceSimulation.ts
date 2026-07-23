@@ -43,9 +43,18 @@ function finalizeLogDrafts(drafts: readonly LogEntryDraft[]): EventLogEntry[] {
   }))
 }
 
-/** Appends every finalized {@link LogEntryDraft} to `log` in order, capped via {@link appendLogEntry}. */
+/**
+ * Appends every finalized {@link LogEntryDraft} to `log`, capped via
+ * {@link appendLogEntry}. Drafts are first ordered by `simSeconds` so the
+ * stored log stays chronological (oldest-first) even when a single tick
+ * collapses transitions for several Drones whose exact embedded instants
+ * differ from the drone-iteration order they were produced in. The sort is
+ * stable (equal `simSeconds` keep production order), so ids — assigned by
+ * post-sort index in {@link finalizeLogDrafts} — stay deterministic.
+ */
 function logWithDraftsAppended(log: readonly EventLogEntry[], drafts: readonly LogEntryDraft[]): EventLogEntry[] {
-  return finalizeLogDrafts(drafts).reduce<EventLogEntry[]>((acc, entry) => appendLogEntry(acc, entry), [...log])
+  const orderedDrafts = [...drafts].sort((a, b) => a.simSeconds - b.simSeconds)
+  return finalizeLogDrafts(orderedDrafts).reduce<EventLogEntry[]>((acc, entry) => appendLogEntry(acc, entry), [...log])
 }
 
 /**
@@ -609,40 +618,6 @@ function activityAfterOneTransition(
   }
 
   if (incomingActivity.mode === 'travelingToFire') {
-    // For a One-Way Mission, check whether this Drone has exhausted its
-    // endurance before even reaching the Fire — same terminal condition as
-    // `droneActivityAfterLostCheck`, just applied during transit rather than
-    // during orbit.
-    if (incomingActivity.missionKind === 'oneWay') {
-      const remaining = remainingEnduranceSimSecondsAt(elapsedSimSeconds, patrol.maxEnduranceSimSeconds)
-      if (remaining <= 0) {
-        const lostAtSimSeconds = patrol.maxEnduranceSimSeconds
-        const assignedFire = incomingFires[incomingActivity.assignedFireId]
-        const orbitEntryPosition = assignedFire
-          ? orbitPositionFor(assignedFire.position, incomingActivity.orbitRadiusMeters, patrolLinearSpeedMetersPerSecond(patrol), 0)
-          : incomingActivity.departurePosition
-        const travelDistance = distanceMetersBetween(incomingActivity.departurePosition, orbitEntryPosition)
-        const travelDuration =
-          travelDistance > 0 && patrol.cruiseSpeedMetersPerSecond > 0
-            ? travelDistance / patrol.cruiseSpeedMetersPerSecond
-            : 0
-        const secondsSinceDeparture = lostAtSimSeconds - incomingActivity.departureSimSeconds
-        const progress = travelDuration > 0 ? Math.min(1, secondsSinceDeparture / travelDuration) : 1
-        const position = interpolateLatLng(incomingActivity.departurePosition, orbitEntryPosition, progress)
-        return {
-          activity: { mode: 'lost', position, lostAtSimSeconds },
-          entry: {
-            simSeconds: lostAtSimSeconds,
-            kind: 'droneLost',
-            severity: 'warning',
-            ...droneEntryFields(droneId, patrol),
-            fireId: incomingActivity.assignedFireId,
-            position,
-          },
-        }
-      }
-    }
-
     const assignedFire = incomingFires[incomingActivity.assignedFireId]
     if (!assignedFire) {
       // Defensive fallback: assigned Fire no longer exists (should not happen
@@ -658,34 +633,45 @@ function activityAfterOneTransition(
       0,
     )
     const travelDistance = distanceMetersBetween(incomingActivity.departurePosition, orbitEntryPosition)
+    const canTravel = travelDistance > 0 && patrol.cruiseSpeedMetersPerSecond > 0
+    const travelDuration = canTravel ? travelDistance / patrol.cruiseSpeedMetersPerSecond : 0
+    const secondsSinceDeparture = elapsedSimSeconds - incomingActivity.departureSimSeconds
+    const hasArrived = secondsSinceDeparture >= travelDuration
 
-    if (travelDistance <= 0 || patrol.cruiseSpeedMetersPerSecond <= 0) {
-      // Already at orbit entry (zero-distance travel or zero cruise speed):
-      // begin orbit immediately.
-      return {
-        activity: {
-          mode: 'investigatingFire',
-          assignedFireId: incomingActivity.assignedFireId,
-          investigationStartedAtSimSeconds: incomingActivity.departureSimSeconds,
-          missionKind: incomingActivity.missionKind,
-          orbitRadiusMeters: incomingActivity.orbitRadiusMeters,
-        },
-        entry: {
-          simSeconds: incomingActivity.departureSimSeconds,
-          kind: 'droneBeganFireOrbit',
-          severity: 'info',
-          ...droneEntryFields(droneId, patrol),
-          fireId: incomingActivity.assignedFireId,
-          position: assignedFire.position,
-        },
+    // For a One-Way Mission, endurance exhaustion mid-flight becomes Lost — but
+    // ONLY while the Drone is still en route to the Fire. If it has already
+    // reached the Fire this tick (e.g. a coarse/high-speed step that jumps past
+    // both arrival and exhaustion), fall through to the arrival transition
+    // below so `droneBeganFireOrbit` is still emitted; the expiry loop's next
+    // hop then applies the orbit-phase Lost check (`droneActivityAfterLostCheck`)
+    // at the correct orbit position. This keeps ADR-0008's "every collapsed
+    // transition is logged exactly once" guarantee for the collapse case the
+    // engine exists to capture.
+    if (incomingActivity.missionKind === 'oneWay' && !hasArrived) {
+      const remaining = remainingEnduranceSimSecondsAt(elapsedSimSeconds, patrol.maxEnduranceSimSeconds)
+      if (remaining <= 0) {
+        const lostAtSimSeconds = patrol.maxEnduranceSimSeconds
+        const progress =
+          travelDuration > 0 ? Math.min(1, (lostAtSimSeconds - incomingActivity.departureSimSeconds) / travelDuration) : 1
+        const position = interpolateLatLng(incomingActivity.departurePosition, orbitEntryPosition, progress)
+        return {
+          activity: { mode: 'lost', position, lostAtSimSeconds },
+          entry: {
+            simSeconds: lostAtSimSeconds,
+            kind: 'droneLost',
+            severity: 'warning',
+            ...droneEntryFields(droneId, patrol),
+            fireId: incomingActivity.assignedFireId,
+            position,
+          },
+        }
       }
     }
 
-    const travelDuration = travelDistance / patrol.cruiseSpeedMetersPerSecond
-    const secondsSinceDeparture = elapsedSimSeconds - incomingActivity.departureSimSeconds
-
-    if (secondsSinceDeparture >= travelDuration) {
-      const arrivalSimSeconds = incomingActivity.departureSimSeconds + travelDuration
+    if (!canTravel || hasArrived) {
+      // Arrived at the Fire's orbit entry (zero-distance/zero cruise speed, or
+      // enough travel time has elapsed): begin the orbit.
+      const arrivalSimSeconds = canTravel ? incomingActivity.departureSimSeconds + travelDuration : incomingActivity.departureSimSeconds
       return {
         activity: {
           mode: 'investigatingFire',

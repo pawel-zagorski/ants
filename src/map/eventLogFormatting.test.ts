@@ -181,7 +181,7 @@ describe('formatEventLogEntry text per kind', () => {
   it('formats recall/grounded/lost lines, with lost as a warning', () => {
     const droneFields = { droneId: 'drone-1', droneModel: 'DJI Mavic 4 Pro', droneType: 'Quadrocopter' as const }
     expect(formatEventLogEntry(entry('droneRecalledToBase', { ...droneFields, position: nearTower }), scenarioWithEpoch, world).text).toBe(
-      'Drone 1 (DJI Mavic 4 Pro, Quadrocopter) ordered to return to nearest base 3.5 km NE of Tower 1',
+      'Drone 1 (DJI Mavic 4 Pro, Quadrocopter) ordered to return to nearest base (Base 2)',
     )
     expect(formatEventLogEntry(entry('droneGrounded', droneFields), scenarioWithEpoch, world).text).toBe(
       'Drone 1 (DJI Mavic 4 Pro, Quadrocopter) grounded at base — out of service',
