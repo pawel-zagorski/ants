@@ -586,7 +586,7 @@ Dependency shape: **X and AA have no blockers and run in parallel**; then **Y �
 
 ---
 
-## [ ] X — Clearcut concept: static footprint, drone-only detection, estimate view, red-tree marker + panel, Ground Truth
+## [x] X — Clearcut concept: static footprint, drone-only detection, estimate view, red-tree marker + panel, Ground Truth
 
 ### Parent
 
@@ -625,7 +625,7 @@ None — can start immediately.
 
 ---
 
-## [ ] Y — Clearcut investigation: Bingo-Range dispatch + orbit → permanent Confirmed Shape
+## [x] Y — Clearcut investigation: Bingo-Range dispatch + orbit → permanent Confirmed Shape
 
 ### Parent
 
@@ -655,7 +655,7 @@ X
 
 ---
 
-## [ ] Z — Reveal nearby Person Sightings when a Clearcut is Investigated
+## [x] Z — Reveal nearby Person Sightings when a Clearcut is Investigated
 
 ### Parent
 
@@ -683,7 +683,7 @@ Y
 
 ---
 
-## [ ] AA — World waypoint Patrol Routes for the two Fixed-Wing Drones
+## [x] AA — World waypoint Patrol Routes for the two Fixed-Wing Drones
 
 ### Parent
 
@@ -714,7 +714,7 @@ None — can start immediately (parallel with X).
 
 ---
 
-## [ ] BB — Author & register the tuned "Illegal Deforestation" scenario
+## [x] BB — Author & register the tuned "Illegal Deforestation" scenario
 
 ### Parent
 
