@@ -412,6 +412,32 @@ body,
   clip-path: polygon(10% 25%, 90% 0%, 100% 75%, 20% 100%);
 }
 
+/* Clearcut marker (issue X, ADR-0009) — a RED tree glyph (not a two-letter
+   label), signaling an illegal-deforestation site. A CSS-clipped tiered
+   pine-tree silhouette with a trunk, in red to stand apart from the amber
+   fallen-tree and orange fire icons. Reuses the shared faded/solid state
+   treatment (`.event-icon-undetected`/`.event-icon-detected`). */
+.event-icon-shape-clearcut {
+  background: #dc2626;
+  clip-path: polygon(
+    50% 0%,
+    63% 25%,
+    56% 25%,
+    70% 50%,
+    61% 50%,
+    78% 78%,
+    57% 78%,
+    57% 100%,
+    43% 100%,
+    43% 78%,
+    22% 78%,
+    39% 50%,
+    30% 50%,
+    44% 25%,
+    37% 25%
+  );
+}
+
 .event-icon-undetected .event-icon-shape {
   opacity: 0.55;
   outline: 2px dashed #374151;

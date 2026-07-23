@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   UNCERTAINTY_ELLIPSE_BASE_RADIUS_METERS,
   uncertaintyEllipseRadiusMeters,
+  uncertaintyEllipseRadiusMetersForClearcut,
   uncertaintyEllipseRadiusMetersForFire,
 } from './uncertaintyEllipse'
-import type { FireRuntimeState } from './types'
+import type { ClearcutRuntimeState, FireRuntimeState } from './types'
 import type { Tower } from '../world/types'
 
 describe('uncertaintyEllipseRadiusMeters', () => {
@@ -74,5 +75,51 @@ describe('uncertaintyEllipseRadiusMetersForFire', () => {
     expect(earlyRadius).toBeDefined()
     expect(laterRadius).toBeDefined()
     expect(laterRadius as number).toBeGreaterThan(earlyRadius as number)
+  })
+})
+
+describe('uncertaintyEllipseRadiusMetersForClearcut (ADR-0009: distance-only, time term zeroed)', () => {
+  function clearcutFixture(overrides: Partial<ClearcutRuntimeState> = {}): ClearcutRuntimeState {
+    return {
+      id: 'clearcut-1',
+      position: { lat: 64.5, lng: 26.25 },
+      tier: 'detected',
+      spawnAtSimSeconds: 0,
+      semiMajorAxisMeters: 400,
+      semiMinorAxisMeters: 120,
+      orientationDegrees: 40,
+      detectedByAssetId: 'drone-2',
+      detectedAtSimSeconds: 0,
+      detectedFromDistanceMeters: 800,
+      ...overrides,
+    }
+  }
+
+  it('grows with the detecting-Drone distance captured at Detection, all else equal', () => {
+    const near = uncertaintyEllipseRadiusMetersForClearcut(clearcutFixture({ detectedFromDistanceMeters: 200 }))
+    const far = uncertaintyEllipseRadiusMetersForClearcut(clearcutFixture({ detectedFromDistanceMeters: 3000 }))
+
+    expect(far).toBeGreaterThan(near)
+  })
+
+  it('does NOT depend on elapsed time — the estimate is a fixed blur (the time-growth term is zeroed)', () => {
+    // The function takes no elapsed-time argument at all, so the same
+    // Clearcut always yields the same radius no matter how long has passed.
+    const clearcut = clearcutFixture({ detectedFromDistanceMeters: 800 })
+    expect(uncertaintyEllipseRadiusMetersForClearcut(clearcut)).toBe(
+      uncertaintyEllipseRadiusMetersForClearcut(clearcut),
+    )
+  })
+
+  it('is exactly the base radius when the Drone was right on top of the Clearcut at Detection', () => {
+    expect(uncertaintyEllipseRadiusMetersForClearcut(clearcutFixture({ detectedFromDistanceMeters: 0 }))).toBe(
+      UNCERTAINTY_ELLIPSE_BASE_RADIUS_METERS,
+    )
+  })
+
+  it('falls back to the base radius when no detecting distance was captured (defensive)', () => {
+    expect(
+      uncertaintyEllipseRadiusMetersForClearcut(clearcutFixture({ detectedFromDistanceMeters: undefined })),
+    ).toBe(UNCERTAINTY_ELLIPSE_BASE_RADIUS_METERS)
   })
 })

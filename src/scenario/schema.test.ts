@@ -201,4 +201,69 @@ describe('parseScenario', () => {
       expect(() => parseScenario(badFire)).toThrow(/durationSimSeconds/)
     })
   })
+
+  describe('Clearcut entries (ADR-0009)', () => {
+    const validClearcut = {
+      id: 'clearcut-1',
+      type: 'Clearcut',
+      position: { lat: 64.52, lng: 26.25 },
+      spawnAtSimSeconds: 0,
+      semiMajorAxisMeters: 400,
+      semiMinorAxisMeters: 120,
+      orientationDegrees: 40,
+    }
+
+    it('accepts a valid Clearcut entry (centroid, size, orientation, spawn) sharing the timed list', () => {
+      const scenario = {
+        startDateTimeIso: validScenario.startDateTimeIso,
+        events: [validClearcut],
+        wind: validScenario.wind,
+      }
+      expect(parseScenario(scenario)).toEqual(scenario)
+    })
+
+    it('throws when a Clearcut entry has a malformed position', () => {
+      const badPosition = {
+        ...validScenario,
+        events: [{ ...validClearcut, position: { lat: 'north', lng: 26.3 } }],
+      }
+      expect(() => parseScenario(badPosition)).toThrow(/position/)
+    })
+
+    it('throws when spawnAtSimSeconds is missing or negative', () => {
+      const missing = { ...validScenario, events: [{ ...validClearcut, spawnAtSimSeconds: undefined }] }
+      expect(() => parseScenario(missing)).toThrow(/spawnAtSimSeconds/)
+      const negative = { ...validScenario, events: [{ ...validClearcut, spawnAtSimSeconds: -1 }] }
+      expect(() => parseScenario(negative)).toThrow(/spawnAtSimSeconds/)
+    })
+
+    it('throws when semiMajorAxisMeters/semiMinorAxisMeters are missing or not positive', () => {
+      expect(() => parseScenario({ ...validScenario, events: [{ ...validClearcut, semiMajorAxisMeters: 0 }] })).toThrow(
+        /semiMajorAxisMeters/,
+      )
+      expect(() => parseScenario({ ...validScenario, events: [{ ...validClearcut, semiMinorAxisMeters: -5 }] })).toThrow(
+        /semiMinorAxisMeters/,
+      )
+      expect(() =>
+        parseScenario({ ...validScenario, events: [{ ...validClearcut, semiMajorAxisMeters: undefined }] }),
+      ).toThrow(/semiMajorAxisMeters/)
+    })
+
+    it('throws when orientationDegrees is missing, non-numeric, or out of the 0-360 range', () => {
+      expect(() =>
+        parseScenario({ ...validScenario, events: [{ ...validClearcut, orientationDegrees: undefined }] }),
+      ).toThrow(/orientationDegrees/)
+      expect(() =>
+        parseScenario({ ...validScenario, events: [{ ...validClearcut, orientationDegrees: 'north' }] }),
+      ).toThrow(/orientationDegrees/)
+      expect(() => parseScenario({ ...validScenario, events: [{ ...validClearcut, orientationDegrees: 400 }] })).toThrow(
+        /orientationDegrees/,
+      )
+    })
+
+    it('rejects a Clearcut entry carrying a durationSimSeconds — a Clearcut never auto-resolves', () => {
+      const badClearcut = { ...validScenario, events: [{ ...validClearcut, durationSimSeconds: 600 }] }
+      expect(() => parseScenario(badClearcut)).toThrow(/durationSimSeconds/)
+    })
+  })
 })

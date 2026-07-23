@@ -49,8 +49,10 @@ function stateFixture(
     towerDetection: {},
     scenarioEvents: [],
     scenarioFireIgnitions: [],
+    scenarioClearcuts: [],
     events,
     fires,
+    clearcuts: {},
     wind: { directionDegrees: 90, speedMetersPerSecond: 5 },
     log: [],
   }

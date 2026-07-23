@@ -1,7 +1,7 @@
 import type { LatLng } from '../map/geo'
 import type { EventLogEntry } from './eventLog'
 import type { HexCoordinate } from './growthEllipse'
-import type { EventType, ScenarioEvent, ScenarioFireIgnition, Wind } from '../scenario/types'
+import type { EventType, ScenarioClearcut, ScenarioEvent, ScenarioFireIgnition, Wind } from '../scenario/types'
 import type { DroneType } from '../world/types'
 
 /**
@@ -314,6 +314,60 @@ export interface FireRuntimeState {
 }
 
 /**
+ * A Clearcut's lifecycle, per `CONTEXT.md`/ADR-0009: `Undetected →
+ * Detected → Investigated` — mirrors {@link FireTier} but with a
+ * `'detected'` middle tier rather than `'towerDetected'`, since a Drone
+ * (never a Tower) is what first moves a Clearcut out of `'undetected'`
+ * (see `detectingDroneIdForClearcut` in `advanceSimulation.ts`).
+ * `'investigated'` (issue Y) is a later, monotonic-forward ratchet — once
+ * a Clearcut is `'investigated'` its tier never reverts, same sticky spirit
+ * as `FireTier`/`EventStatus`.
+ */
+export type ClearcutTier = 'undetected' | 'detected' | 'investigated'
+
+/**
+ * A single spawned Clearcut's live engine state (ADR-0009): its scripted
+ * identity/centroid/footprint shape (copied from the Scenario's {@link
+ * ScenarioClearcut}) plus its current `tier`. A sibling of {@link
+ * FireRuntimeState}, kept as a wholly separate interface (ADR-0009:
+ * Clearcut is not a kind of Event, and — unlike a Fire — its footprint is
+ * static, never wind/time-driven) rather than folding optional fields onto
+ * `FireRuntimeState`.
+ *
+ * `position` is the footprint centroid; `semiMajorAxisMeters`/
+ * `semiMinorAxisMeters`/`orientationDegrees` describe the fixed, oriented
+ * Clearcut Footprint ellipse (see `engine/clearcutFootprint.ts`) — carried
+ * through here (like a Fire's `position`) so the footprint can be
+ * re-derived every tick without re-reading the Scenario.
+ *
+ * `detectedByAssetId`/`detectedAtSimSeconds` are set once, the tick a
+ * Clearcut first flips out of `'undetected'` — always a *Drone* id (Towers
+ * never detect a Clearcut) and the absolute `elapsedSimSeconds` at that
+ * moment — then carried forward unchanged (sticky/monotonic, same pattern
+ * as `FireRuntimeState`). `detectedFromDistanceMeters` is the straight-line
+ * distance from that detecting Drone to the centroid *at the moment of
+ * Detection*, captured once and never updated — it is what sizes the
+ * distance-only Uncertainty Ellipse estimate (`CONTEXT.md`'s updated
+ * Uncertainty Ellipse entry: a Clearcut's estimate is a fixed,
+ * distance-only blur with the time-growth term zeroed, so it must not
+ * change as the detecting Drone later moves away). Deliberately has no
+ * `durationSimSeconds`/resolved-equivalent tier — a Clearcut never
+ * auto-resolves.
+ */
+export interface ClearcutRuntimeState {
+  id: string
+  position: LatLng
+  tier: ClearcutTier
+  spawnAtSimSeconds: number
+  semiMajorAxisMeters: number
+  semiMinorAxisMeters: number
+  orientationDegrees: number
+  detectedByAssetId?: string
+  detectedAtSimSeconds?: number
+  detectedFromDistanceMeters?: number
+}
+
+/**
  * The engine's full serializable state: every Drone's patrol loop and
  * derived position keyed by Drone id, every Drone's dispatch/investigate
  * activity keyed by Drone id, every Tower's fixed detection data keyed by
@@ -350,8 +404,18 @@ export interface SimulationState {
   towerDetection: Record<string, TowerDetectionState>
   scenarioEvents: ScenarioEvent[]
   scenarioFireIgnitions: ScenarioFireIgnition[]
+  scenarioClearcuts: ScenarioClearcut[]
   events: Record<string, EventRuntimeState>
   fires: Record<string, FireRuntimeState>
+  /**
+   * Every currently-spawned Clearcut keyed by id — a sibling map to
+   * `events`/`fires`, not folded into either (ADR-0009: a Clearcut is not a
+   * kind of Event, and is a static-footprint sibling of Fire). Re-derived
+   * every call from `scenarioClearcuts` (the unchanging Scenario script)
+   * plus the incoming `clearcuts` as memory for sticky Detection tier, same
+   * pattern as `fires`.
+   */
+  clearcuts: Record<string, ClearcutRuntimeState>
   wind: Wind
   /**
    * The engine-emitted Event Log (ADR-0008, `CONTEXT.md`'s **Event Log** /

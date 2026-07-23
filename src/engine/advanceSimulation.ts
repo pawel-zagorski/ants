@@ -6,9 +6,10 @@ import type { EventLogEntry } from './eventLog'
 import { fireFootprintHexCells, fireOrbitRadiusMetersAt } from './growthEllipse'
 import { orbitLapDurationSimSeconds, orbitPositionFor } from './orbit'
 import { remainingEnduranceSimSecondsAt } from './telemetry'
-import type { Scenario, ScenarioEntry, ScenarioEvent, ScenarioFireIgnition, Wind } from '../scenario/types'
+import type { Scenario, ScenarioClearcut, ScenarioEntry, ScenarioEvent, ScenarioFireIgnition, Wind } from '../scenario/types'
 import type { BaseStation, DroneType, World } from '../world/types'
 import type {
+  ClearcutRuntimeState,
   DroneActivityState,
   DronePatrolState,
   EventRuntimeState,
@@ -466,6 +467,130 @@ function firesAt(
   }
 
   return fires
+}
+
+/**
+ * The Clearcut mirror of {@link spawnedFiresAt} (ADR-0009): every {@link
+ * ScenarioClearcut} whose `spawnAtSimSeconds` has been reached, each as a
+ * fresh `'undetected'` {@link ClearcutRuntimeState} carrying its centroid
+ * and static footprint shape. Clearcuts whose spawn time hasn't been
+ * reached are left out entirely, same "doesn't exist before spawn" rule as
+ * Events/Fires. Pure and total.
+ */
+function spawnedClearcutsAt(
+  scenarioClearcuts: readonly ScenarioClearcut[],
+  elapsedSimSeconds: number,
+): Record<string, ClearcutRuntimeState> {
+  const clearcuts: Record<string, ClearcutRuntimeState> = {}
+
+  for (const scenarioClearcut of scenarioClearcuts) {
+    if (scenarioClearcut.spawnAtSimSeconds > elapsedSimSeconds) continue
+
+    clearcuts[scenarioClearcut.id] = {
+      id: scenarioClearcut.id,
+      position: scenarioClearcut.position,
+      tier: 'undetected',
+      spawnAtSimSeconds: scenarioClearcut.spawnAtSimSeconds,
+      semiMajorAxisMeters: scenarioClearcut.semiMajorAxisMeters,
+      semiMinorAxisMeters: scenarioClearcut.semiMinorAxisMeters,
+      orientationDegrees: scenarioClearcut.orientationDegrees,
+    }
+  }
+
+  return clearcuts
+}
+
+/**
+ * The single *Drone* id (if any) whose detection radius currently contains
+ * the Clearcut at `position` (its centroid), per ADR-0009's Detection rule:
+ * a Clearcut is detectable by Drones ONLY — a Tower must never detect one
+ * (contrast {@link detectingAssetIdForFire}, which checks Towers first).
+ * Payload does not gate detection — every Drone qualifies (the shared
+ * `assetIdWithinRadius` scan makes no payload check). This is exactly
+ * {@link detectingAssetIdFor}'s rule (Drones detect any non-Tower-only
+ * phenomenon), but named separately for clarity at the Clearcut call site.
+ */
+function detectingDroneIdForClearcut(
+  position: LatLng,
+  dronePatrol: Record<string, DronePatrolState>,
+): string | undefined {
+  return assetIdWithinRadius(position, dronePatrol)
+}
+
+/**
+ * The Clearcut-tier mirror of {@link fireWithDetectionApplied} (ADR-0009):
+ * once `previousClearcutState.tier` has left `'undetected'` it's carried
+ * forward (sticky, monotonic — same rule as `FireRuntimeState.tier`) rather
+ * than re-derived from this tick's Drone positions. Only a still-
+ * `'undetected'` Clearcut is checked against the current tick's Drone
+ * positions via {@link detectingDroneIdForClearcut} (Towers are never
+ * consulted). On a fresh Detection it records the detecting Drone id, the
+ * sim-second, and — uniquely to Clearcuts — the straight-line distance from
+ * that Drone to the centroid at that instant (`detectedFromDistanceMeters`),
+ * which sizes the fixed, distance-only Uncertainty Ellipse estimate (the
+ * time-growth term is zeroed for Clearcuts; see
+ * `uncertaintyEllipse.ts`'s `uncertaintyEllipseRadiusMetersForClearcut`).
+ * There is no resolution step and no `'investigated'` ratchet here — that
+ * (issue Y) is layered on separately once a Drone orbits it.
+ */
+function clearcutWithDetectionApplied(
+  clearcut: ClearcutRuntimeState,
+  previousClearcutState: ClearcutRuntimeState | undefined,
+  elapsedSimSeconds: number,
+  dronePatrol: Record<string, DronePatrolState>,
+): ClearcutRuntimeState {
+  if (previousClearcutState && previousClearcutState.tier !== 'undetected') {
+    return {
+      ...clearcut,
+      tier: previousClearcutState.tier,
+      ...(previousClearcutState.detectedByAssetId !== undefined
+        ? { detectedByAssetId: previousClearcutState.detectedByAssetId }
+        : {}),
+      ...(previousClearcutState.detectedAtSimSeconds !== undefined
+        ? { detectedAtSimSeconds: previousClearcutState.detectedAtSimSeconds }
+        : {}),
+      ...(previousClearcutState.detectedFromDistanceMeters !== undefined
+        ? { detectedFromDistanceMeters: previousClearcutState.detectedFromDistanceMeters }
+        : {}),
+    }
+  }
+
+  const detectingDroneId = detectingDroneIdForClearcut(clearcut.position, dronePatrol)
+  if (detectingDroneId === undefined) {
+    return clearcut
+  }
+
+  return {
+    ...clearcut,
+    tier: 'detected',
+    detectedByAssetId: detectingDroneId,
+    detectedAtSimSeconds: elapsedSimSeconds,
+    detectedFromDistanceMeters: distanceMetersBetween(dronePatrol[detectingDroneId].position, clearcut.position),
+  }
+}
+
+/**
+ * The Clearcut mirror of {@link firesAt} (ADR-0009): starts from {@link
+ * spawnedClearcutsAt}'s fresh snapshot, then runs each Clearcut through
+ * {@link clearcutWithDetectionApplied} against `incomingClearcuts` (the
+ * previous tick's `SimulationState.clearcuts`, for sticky tier) and the
+ * current tick's `dronePatrol` positions. Drone-only detection, so — unlike
+ * `firesAt` — no `towerDetection` argument at all. Same tick-resolution
+ * caveat as `eventsAt`/`firesAt` applies.
+ */
+function clearcutsAt(
+  scenarioClearcuts: readonly ScenarioClearcut[],
+  elapsedSimSeconds: number,
+  incomingClearcuts: Record<string, ClearcutRuntimeState>,
+  dronePatrol: Record<string, DronePatrolState>,
+): Record<string, ClearcutRuntimeState> {
+  const clearcuts: Record<string, ClearcutRuntimeState> = {}
+
+  for (const [id, clearcut] of Object.entries(spawnedClearcutsAt(scenarioClearcuts, elapsedSimSeconds))) {
+    clearcuts[id] = clearcutWithDetectionApplied(clearcut, incomingClearcuts[id], elapsedSimSeconds, dronePatrol)
+  }
+
+  return clearcuts
 }
 
 /**
@@ -1025,21 +1150,26 @@ function positionForActivity(
  * (`scenarioEvents`/`scenarioFireIgnitions`) — done once, here, rather than
  * re-filtered on every tick.
  */
-function partitionScenarioEntries(
-  entries: readonly ScenarioEntry[],
-): { scenarioEvents: ScenarioEvent[]; scenarioFireIgnitions: ScenarioFireIgnition[] } {
+function partitionScenarioEntries(entries: readonly ScenarioEntry[]): {
+  scenarioEvents: ScenarioEvent[]
+  scenarioFireIgnitions: ScenarioFireIgnition[]
+  scenarioClearcuts: ScenarioClearcut[]
+} {
   const scenarioEvents: ScenarioEvent[] = []
   const scenarioFireIgnitions: ScenarioFireIgnition[] = []
+  const scenarioClearcuts: ScenarioClearcut[] = []
 
   for (const entry of entries) {
     if (entry.type === 'Fire') {
       scenarioFireIgnitions.push(entry)
+    } else if (entry.type === 'Clearcut') {
+      scenarioClearcuts.push(entry)
     } else {
       scenarioEvents.push(entry)
     }
   }
 
-  return { scenarioEvents, scenarioFireIgnitions }
+  return { scenarioEvents, scenarioFireIgnitions, scenarioClearcuts }
 }
 
 /**
@@ -1062,16 +1192,19 @@ function deriveDronesEventsAndFires(
   towerDetection: Record<string, TowerDetectionState>,
   scenarioEvents: readonly ScenarioEvent[],
   scenarioFireIgnitions: readonly ScenarioFireIgnition[],
+  scenarioClearcuts: readonly ScenarioClearcut[],
   elapsedSimSeconds: number,
   incomingDroneActivity: Record<string, DroneActivityState>,
   incomingEvents: Record<string, EventRuntimeState>,
   incomingFires: Record<string, FireRuntimeState>,
+  incomingClearcuts: Record<string, ClearcutRuntimeState>,
   wind: Wind,
 ): {
   dronePatrol: Record<string, DronePatrolState>
   droneActivity: Record<string, DroneActivityState>
   events: Record<string, EventRuntimeState>
   fires: Record<string, FireRuntimeState>
+  clearcuts: Record<string, ClearcutRuntimeState>
   logDrafts: LogEntryDraft[]
 } {
   const logDrafts: LogEntryDraft[] = []
@@ -1099,6 +1232,7 @@ function deriveDronesEventsAndFires(
 
   const events = eventsAt(scenarioEvents, elapsedSimSeconds, incomingEvents, dronePatrol)
   const fires = firesAt(scenarioFireIgnitions, elapsedSimSeconds, incomingFires, dronePatrol, towerDetection, droneActivity, wind)
+  const clearcuts = clearcutsAt(scenarioClearcuts, elapsedSimSeconds, incomingClearcuts, dronePatrol)
 
   // Detection Log Entries (fog-of-war, ADR-0008): an Event/Fire that has just
   // left `'undetected'` this call — i.e. it now carries a
@@ -1142,7 +1276,7 @@ function deriveDronesEventsAndFires(
     }
   }
 
-  return { dronePatrol, droneActivity, events, fires, logDrafts }
+  return { dronePatrol, droneActivity, events, fires, clearcuts, logDrafts }
 }
 
 /**
@@ -1191,15 +1325,17 @@ export function initializeSimulationState(world: World, scenario: Scenario): Sim
     towerDetection[tower.id] = { position: tower.position, detectionRadiusMeters: tower.detectionRadiusMeters }
   }
 
-  const { scenarioEvents, scenarioFireIgnitions } = partitionScenarioEntries(scenario.events)
+  const { scenarioEvents, scenarioFireIgnitions, scenarioClearcuts } = partitionScenarioEntries(scenario.events)
 
   const derived = deriveDronesEventsAndFires(
     dronePatrolParams,
     towerDetection,
     scenarioEvents,
     scenarioFireIgnitions,
+    scenarioClearcuts,
     0,
     initialDroneActivity,
+    {},
     {},
     {},
     scenario.wind,
@@ -1212,8 +1348,10 @@ export function initializeSimulationState(world: World, scenario: Scenario): Sim
     towerDetection,
     scenarioEvents,
     scenarioFireIgnitions,
+    scenarioClearcuts,
     events: derived.events,
     fires: derived.fires,
+    clearcuts: derived.clearcuts,
     wind: scenario.wind,
     // The Event Log starts empty (ADR-0008): it accumulates only as
     // transitions occur during subsequent `advanceSimulation`/`withManual*`
@@ -1252,10 +1390,12 @@ export function advanceSimulation(state: SimulationState, elapsedSimSeconds: num
     state.towerDetection,
     state.scenarioEvents,
     state.scenarioFireIgnitions,
+    state.scenarioClearcuts,
     elapsedSimSeconds,
     state.droneActivity,
     state.events,
     state.fires,
+    state.clearcuts,
     state.wind,
   )
 
@@ -1266,8 +1406,10 @@ export function advanceSimulation(state: SimulationState, elapsedSimSeconds: num
     towerDetection: state.towerDetection,
     scenarioEvents: state.scenarioEvents,
     scenarioFireIgnitions: state.scenarioFireIgnitions,
+    scenarioClearcuts: state.scenarioClearcuts,
     events: derived.events,
     fires: derived.fires,
+    clearcuts: derived.clearcuts,
     wind: state.wind,
     // Carry the incoming log forward and append every transition/Detection
     // Log Entry emitted this tick, capped oldest-first (ADR-0008). Each

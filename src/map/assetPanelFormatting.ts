@@ -1,5 +1,5 @@
 import type { DroneTelemetryState } from '../engine/telemetry'
-import type { FireMissionKind, FireTier } from '../engine/types'
+import type { ClearcutTier, FireMissionKind, FireTier } from '../engine/types'
 
 /** Renders a battery telemetry value (0-100) as a rounded whole-percent string, e.g. "84%". */
 export function formatBatteryPercent(batteryPercent: number): string {
@@ -58,6 +58,17 @@ const FIRE_TIER_LABELS: Record<FireTier, string> = {
 /** Renders a {@link FireTier} discriminant as its exact `CONTEXT.md` display term, mirroring `eventTypeLabel`'s Event-side equivalent. */
 export function fireTierLabel(tier: FireTier): string {
   return FIRE_TIER_LABELS[tier]
+}
+
+const CLEARCUT_TIER_LABELS: Record<ClearcutTier, string> = {
+  undetected: 'Undetected',
+  detected: 'Detected',
+  investigated: 'Investigated',
+}
+
+/** Renders a {@link ClearcutTier} discriminant (ADR-0009) as a display label, the Clearcut sibling of {@link fireTierLabel}. */
+export function clearcutTierLabel(tier: ClearcutTier): string {
+  return CLEARCUT_TIER_LABELS[tier]
 }
 
 const FIRE_MISSION_KIND_LABELS: Record<FireMissionKind, string> = {

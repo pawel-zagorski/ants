@@ -4,6 +4,10 @@ import 'leaflet/dist/leaflet.css'
 import { toLeafletBounds } from './geo'
 import { AssetMarkers } from './AssetMarkers'
 import { AssetPanel } from './AssetPanel'
+import { ClearcutEstimateLayer } from './ClearcutEstimateLayer'
+import { ClearcutFootprintLayer } from './ClearcutFootprintLayer'
+import { ClearcutMarkers } from './ClearcutMarkers'
+import { ClearcutPanel } from './ClearcutPanel'
 import { ConfirmedShapeLayer } from './ConfirmedShapeLayer'
 import { EventLogPanel } from './EventLogPanel'
 import { DatalinkLines } from './DatalinkLines'
@@ -129,6 +133,11 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
   // detection id" (ADR-0004: Fire is not a kind of Event, so its
   // detection-panel-open state stays its own concept too).
   const [selectedFireId, setSelectedFireId] = useState<string | null>(null)
+  // Mirrors `selectedFireId` (issue T), but for Clearcut (issue X) — its own
+  // separate state (ADR-0009: a Clearcut is not a kind of Event/Fire, so its
+  // detection-panel-open state stays its own concept too). Mutually
+  // exclusive with the other three selections (see the `onSelect` handlers).
+  const [selectedClearcutId, setSelectedClearcutId] = useState<string | null>(null)
   const [groundTruthViewEnabled, setGroundTruthViewEnabled] = useState(false)
   const clock = useSimulationClock(world, scenario)
   const liveWorld = useMemo(() => withDronePositions(world, clock.simulationState), [world, clock.simulationState])
@@ -138,6 +147,7 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
   const selectedAsset = selectedAssetId ? allAssets(liveWorld).find((asset) => asset.id === selectedAssetId) ?? null : null
   const selectedEvent = selectedEventId ? clock.simulationState.events[selectedEventId] ?? null : null
   const selectedFire = selectedFireId ? clock.simulationState.fires[selectedFireId] ?? null : null
+  const selectedClearcut = selectedClearcutId ? clock.simulationState.clearcuts[selectedClearcutId] ?? null : null
   // The Return Envelope (issue K) is only shown while a Drone's status
   // panel is open — mirrors `AssetPanel`'s own conditional-render pattern
   // above, and reads the same live, shrinking-over-time
@@ -174,6 +184,7 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
           setSelectedAssetId(asset.id)
           setSelectedEventId(null)
           setSelectedFireId(null)
+          setSelectedClearcutId(null)
         }}
       />
       <EventMarkers
@@ -183,6 +194,7 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
           setSelectedEventId(event.id)
           setSelectedAssetId(null)
           setSelectedFireId(null)
+          setSelectedClearcutId(null)
         }}
       />
       <FireMarkers
@@ -192,6 +204,17 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
           setSelectedFireId(fire.id)
           setSelectedAssetId(null)
           setSelectedEventId(null)
+          setSelectedClearcutId(null)
+        }}
+      />
+      <ClearcutMarkers
+        clearcuts={clock.simulationState.clearcuts}
+        groundTruthViewEnabled={groundTruthViewEnabled}
+        onSelect={(clearcut) => {
+          setSelectedClearcutId(clearcut.id)
+          setSelectedAssetId(null)
+          setSelectedEventId(null)
+          setSelectedFireId(null)
         }}
       />
       <FireFootprintLayer
@@ -207,6 +230,14 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
         groundTruthViewEnabled={groundTruthViewEnabled}
       />
       <ConfirmedShapeLayer fires={clock.simulationState.fires} groundTruthViewEnabled={groundTruthViewEnabled} />
+      <ClearcutFootprintLayer
+        clearcuts={clock.simulationState.clearcuts}
+        groundTruthViewEnabled={groundTruthViewEnabled}
+      />
+      <ClearcutEstimateLayer
+        clearcuts={clock.simulationState.clearcuts}
+        groundTruthViewEnabled={groundTruthViewEnabled}
+      />
       {selectedAsset && isDroneAsset(selectedAsset) && selectedDroneRemainingEnduranceSimSeconds !== undefined && (
         <ReturnEnvelope
           drone={selectedAsset}
@@ -245,6 +276,13 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
           wind={scenario.wind}
           onSend={(droneId, missionKind) => clock.sendDroneToFire(droneId, selectedFire.id, missionKind)}
           onClose={() => setSelectedFireId(null)}
+        />
+      )}
+      {selectedClearcut && (
+        <ClearcutPanel
+          clearcut={selectedClearcut}
+          startDateTimeIso={scenario.startDateTimeIso}
+          onClose={() => setSelectedClearcutId(null)}
         />
       )}
           <div className="bottom-controls">

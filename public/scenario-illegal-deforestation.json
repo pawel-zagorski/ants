@@ -1,0 +1,15 @@
+{
+  "startDateTimeIso": "2025-08-12T09:15:00Z",
+  "events": [
+    {
+      "id": "illegal-deforestation-clearcut-1",
+      "type": "Clearcut",
+      "position": { "lat": 64.5225, "lng": 26.285 },
+      "spawnAtSimSeconds": 0,
+      "semiMajorAxisMeters": 350,
+      "semiMinorAxisMeters": 120,
+      "orientationDegrees": 60
+    }
+  ],
+  "wind": { "directionDegrees": 200, "speedMetersPerSecond": 4 }
+}

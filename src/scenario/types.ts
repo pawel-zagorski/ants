@@ -41,12 +41,37 @@ export interface ScenarioFireIgnition {
 }
 
 /**
- * One entry in a Scenario's single timed list (ADR-0004): either a Fire
- * ignition or a Person Sighting/Fallen Tree Event, told apart by `type`.
- * Fire shares this list with Events purely to avoid schema churn — it is
- * still its own domain concept, not a kind of Event (see `EventType`).
+ * A single scripted Clearcut from a `scenario-*.json` file (ADR-0009):
+ * an illegal-deforestation site, modeled as a sibling of a Fire ignition
+ * rather than a kind of Event (parallels `ScenarioFireIgnition`/ADR-0004).
+ * Authored as a static, *oriented* footprint: a `position` centroid, when
+ * it spawns (`spawnAtSimSeconds`, typically `0`), and the footprint's shape
+ * as an ellipse — `semiMajorAxisMeters`/`semiMinorAxisMeters` (its two
+ * half-axes) plus `orientationDegrees` (the major axis' compass bearing,
+ * clockwise from north, so a road-aligned logging site can be elongated
+ * along the road). Deliberately no `durationSimSeconds` (a Clearcut never
+ * auto-resolves) and — unlike a Fire — no Wind/time term at all: its
+ * Clearcut Footprint (`engine/clearcutFootprint.ts`) is fixed for the whole
+ * run (`CONTEXT.md`'s Clearcut Footprint entry).
  */
-export type ScenarioEntry = ScenarioEvent | ScenarioFireIgnition
+export interface ScenarioClearcut {
+  id: string
+  type: 'Clearcut'
+  position: LatLng
+  spawnAtSimSeconds: number
+  semiMajorAxisMeters: number
+  semiMinorAxisMeters: number
+  orientationDegrees: number
+}
+
+/**
+ * One entry in a Scenario's single timed list (ADR-0004/ADR-0009): a Fire
+ * ignition, a Clearcut, or a Person Sighting/Fallen Tree Event, told apart
+ * by `type`. Fire and Clearcut share this list with Events purely to avoid
+ * schema churn — each is still its own domain concept, not a kind of Event
+ * (see `EventType`).
+ */
+export type ScenarioEntry = ScenarioEvent | ScenarioFireIgnition | ScenarioClearcut
 
 /**
  * A fixed direction/speed authored once per Scenario (see `CONTEXT.md`'s
