@@ -4,11 +4,29 @@
     {
       "id": "illegal-deforestation-clearcut-1",
       "type": "Clearcut",
-      "position": { "lat": 64.5225, "lng": 26.285 },
+      "position": { "lat": 64.49226, "lng": 26.328161 },
       "spawnAtSimSeconds": 0,
       "semiMajorAxisMeters": 350,
-      "semiMinorAxisMeters": 120,
-      "orientationDegrees": 60
+      "semiMinorAxisMeters": 130,
+      "orientationDegrees": 70
+    },
+    {
+      "id": "illegal-deforestation-sighting-1",
+      "type": "PersonSighting",
+      "position": { "lat": 64.494236, "lng": 26.334419 },
+      "spawnAtSimSeconds": 0
+    },
+    {
+      "id": "illegal-deforestation-sighting-2",
+      "type": "PersonSighting",
+      "position": { "lat": 64.495584, "lng": 26.334419 },
+      "spawnAtSimSeconds": 0
+    },
+    {
+      "id": "illegal-deforestation-sighting-3",
+      "type": "PersonSighting",
+      "position": { "lat": 64.496482, "lng": 26.334419 },
+      "spawnAtSimSeconds": 0
     }
   ],
   "wind": { "directionDegrees": 200, "speedMetersPerSecond": 4 }
