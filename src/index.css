@@ -114,16 +114,40 @@ body,
   top: 16px;
   right: 16px;
   z-index: 1100;
+  display: flex;
+  flex-direction: column;
   width: 220px;
   max-height: calc(100% - 32px);
-  padding: 16px;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  padding: 0;
+  overflow: hidden;
   background: #ffffff;
   border-radius: 8px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
   font-family: system-ui, sans-serif;
   box-sizing: border-box;
+}
+
+/* Scrollable middle section — telemetry/fields live here; action footers
+   (RTB, Send lists) stay outside so they never cover data. */
+.asset-panel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+  padding: 16px;
+  scrollbar-width: thin;
+  scrollbar-color: #94a3b8 #f1f5f9;
+}
+
+.asset-panel-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.asset-panel-body::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 3px;
 }
 
 /* Card photo banner — bleeds into the panel's own padding so it spans the
@@ -157,6 +181,7 @@ body,
   position: absolute;
   top: 4px;
   right: 4px;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -411,13 +436,13 @@ body,
    while the light-blue Return Envelope overlay it explains is actually on the
    map (a Drone panel is open and the Drone is not terminal). */
 .asset-panel-drone-actions {
-  position: sticky;
-  bottom: 0;
-  margin-top: 12px;
-  padding-top: 8px;
+  flex: 0 0 auto;
+  margin-top: 0;
+  padding: 12px 16px 16px;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  border-top: 1px solid #e5e7eb;
   background: #ffffff;
 }
 
@@ -625,11 +650,10 @@ body,
    doc comment) but adds its own "Available Drones" list/Send-button
    section, which AssetPanel has no equivalent of. */
 .event-panel-drones {
-  position: sticky;
-  bottom: 0;
-  margin-top: 12px;
+  flex: 0 0 auto;
+  margin-top: 0;
   border-top: 1px solid #e5e7eb;
-  padding-top: 8px;
+  padding: 12px 16px 16px;
   background: #ffffff;
 }
 
@@ -681,11 +705,10 @@ body,
    precedent as `FirePanel.tsx`'s/`EventPanel.tsx`'s own doc comments about
    not sharing formatters) even though the rules are currently identical. */
 .fire-panel-drones {
-  position: sticky;
-  bottom: 0;
-  margin-top: 12px;
+  flex: 0 0 auto;
+  margin-top: 0;
   border-top: 1px solid #e5e7eb;
-  padding-top: 8px;
+  padding: 12px 16px 16px;
   background: #ffffff;
 }
 
@@ -736,11 +759,10 @@ body,
    its own tiny styling" precedent noted above, even though the rules are
    currently identical. */
 .clearcut-panel-drones {
-  position: sticky;
-  bottom: 0;
-  margin-top: 12px;
+  flex: 0 0 auto;
+  margin-top: 0;
   border-top: 1px solid #e5e7eb;
-  padding-top: 8px;
+  padding: 12px 16px 16px;
   background: #ffffff;
 }
 
@@ -941,9 +963,7 @@ body,
     left: 16px;
     right: 16px;
     width: auto;
-    /* Leave the bottom-left control stack (~clock + ground truth + wind)
-       uncovered so panel actions and simulation controls stay separate. */
-    max-height: calc(100% - 220px);
+    max-height: calc(100% - 24px);
   }
 
   .asset-panel-photo {
@@ -957,6 +977,12 @@ body,
     left: max(12px, env(safe-area-inset-left, 0px));
     max-width: calc(100% - 24px);
     gap: 6px;
+  }
+
+  /* While a status panel is open, tuck controls away so the panel can use
+     the full map height without overlapping simulation chrome. */
+  .bottom-controls--panel-open {
+    display: none;
   }
 
   .simulation-clock-panel {

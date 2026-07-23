@@ -1,5 +1,6 @@
 import { eventTypeLabel } from '../scenario/eventTypeLabel'
 import { withBase } from '../basePath'
+import { MapOverlayPanel } from './MapOverlayPanel'
 import type { EventRuntimeState, SimulationState } from '../engine/types'
 import type { EventType } from '../scenario/types'
 import type { Drone } from '../world/types'
@@ -81,20 +82,22 @@ export function EventPanel({ event, simulationState, drones, onSend, onClose }: 
   const photo = eventPhotoFor(event.type)
 
   return (
-    <div className="asset-panel event-panel" role="dialog" aria-label={`${eventTypeLabel(event.type)} ${event.id} status`}>
-      <img className="asset-panel-photo" src={withBase(photo.src)} alt={photo.alt} />
+    <MapOverlayPanel className="asset-panel event-panel" role="dialog" aria-label={`${eventTypeLabel(event.type)} ${event.id} status`}>
       <button type="button" className="asset-panel-close" onClick={onClose} aria-label="Close">
         &times;
       </button>
-      <h2 className="asset-panel-title">{event.id}</h2>
-      <dl className="asset-panel-fields">
-        <dt>Type</dt>
-        <dd>{eventTypeLabel(event.type)}</dd>
-        <dt>Detected By</dt>
-        <dd>{event.detectedByAssetId ?? 'Unknown'}</dd>
-        <dt>Detected At</dt>
-        <dd>{event.detectedAtSimSeconds !== undefined ? formatDetectedAt(event.detectedAtSimSeconds) : 'Unknown'}</dd>
-      </dl>
+      <div className="asset-panel-body">
+        <img className="asset-panel-photo" src={withBase(photo.src)} alt={photo.alt} />
+        <h2 className="asset-panel-title">{event.id}</h2>
+        <dl className="asset-panel-fields">
+          <dt>Type</dt>
+          <dd>{eventTypeLabel(event.type)}</dd>
+          <dt>Detected By</dt>
+          <dd>{event.detectedByAssetId ?? 'Unknown'}</dd>
+          <dt>Detected At</dt>
+          <dd>{event.detectedAtSimSeconds !== undefined ? formatDetectedAt(event.detectedAtSimSeconds) : 'Unknown'}</dd>
+        </dl>
+      </div>
       <div className="event-panel-drones">
         <h3 className="event-panel-drones-title">Available Drones</h3>
         {availableDrones.length === 0 ? (
@@ -112,6 +115,6 @@ export function EventPanel({ event, simulationState, drones, onSend, onClose }: 
           </ul>
         )}
       </div>
-    </div>
+    </MapOverlayPanel>
   )
 }

@@ -1,5 +1,6 @@
 import { fireTierLabel } from './assetPanelFormatting'
 import { withBase } from '../basePath'
+import { MapOverlayPanel } from './MapOverlayPanel'
 import { classifyFireDispatch } from '../engine/bingoRange'
 import { fireOrbitRadiusMetersAt } from '../engine/growthEllipse'
 import { formatScenarioDateTime, pad2 } from '../engine/scenarioEpoch'
@@ -197,24 +198,26 @@ export function FirePanel({ fire, startDateTimeIso, simulationState, drones, bas
   const { bingoRange, oneWayMission } = fireDispatchListsFor(fire, drones, simulationState, baseStations, wind)
 
   return (
-    <div className="asset-panel fire-panel" role="dialog" aria-label={`Fire ${fire.id} status`}>
-      <img className="asset-panel-photo" src={withBase('/img/wildfire.jpeg')} alt="Wildfire" />
+    <MapOverlayPanel className="asset-panel fire-panel" role="dialog" aria-label={`Fire ${fire.id} status`}>
       <button type="button" className="asset-panel-close" onClick={onClose} aria-label="Close">
         &times;
       </button>
-      <h2 className="asset-panel-title">{fire.id}</h2>
-      <dl className="asset-panel-fields">
-        <dt>Tier</dt>
-        <dd>{fireTierLabel(fire.tier)}</dd>
-        <dt>Detected By</dt>
-        <dd>{fire.detectedByAssetId ?? 'Unknown'}</dd>
-        <dt>Detected At</dt>
-        <dd>
-          {fire.detectedAtSimSeconds !== undefined
-            ? formatDetectedAt(fire.detectedAtSimSeconds, startDateTimeIso)
-            : 'Unknown'}
-        </dd>
-      </dl>
+      <div className="asset-panel-body">
+        <img className="asset-panel-photo" src={withBase('/img/wildfire.jpeg')} alt="Wildfire" />
+        <h2 className="asset-panel-title">{fire.id}</h2>
+        <dl className="asset-panel-fields">
+          <dt>Tier</dt>
+          <dd>{fireTierLabel(fire.tier)}</dd>
+          <dt>Detected By</dt>
+          <dd>{fire.detectedByAssetId ?? 'Unknown'}</dd>
+          <dt>Detected At</dt>
+          <dd>
+            {fire.detectedAtSimSeconds !== undefined
+              ? formatDetectedAt(fire.detectedAtSimSeconds, startDateTimeIso)
+              : 'Unknown'}
+          </dd>
+        </dl>
+      </div>
       <FireDispatchDroneList
         title="Bingo Range"
         drones={bingoRange}
@@ -229,6 +232,6 @@ export function FirePanel({ fire, startDateTimeIso, simulationState, drones, bas
         missionKind="oneWay"
         onSend={onSend}
       />
-    </div>
+    </MapOverlayPanel>
   )
 }

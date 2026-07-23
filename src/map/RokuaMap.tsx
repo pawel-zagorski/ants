@@ -150,6 +150,8 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
   const selectedEvent = selectedEventId ? clock.simulationState.events[selectedEventId] ?? null : null
   const selectedFire = selectedFireId ? clock.simulationState.fires[selectedFireId] ?? null : null
   const selectedClearcut = selectedClearcutId ? clock.simulationState.clearcuts[selectedClearcutId] ?? null : null
+  const statusPanelOpen =
+    selectedAsset !== null || selectedEvent !== null || selectedFire !== null || selectedClearcut !== null
   // The Return Envelope (issue K) is only shown while a Drone's status
   // panel is open — mirrors `AssetPanel`'s own conditional-render pattern
   // above, and reads the same live, shrinking-over-time
@@ -295,7 +297,7 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
           onClose={() => setSelectedClearcutId(null)}
         />
       )}
-          <div className="bottom-controls">
+          <div className={`bottom-controls${statusPanelOpen ? ' bottom-controls--panel-open' : ''}`}>
             <SimulationClockPanel clock={clock} startDateTimeIso={scenario.startDateTimeIso} />
             <GroundTruthToggle enabled={groundTruthViewEnabled} onChange={setGroundTruthViewEnabled} />
             <WindIndicator wind={scenario.wind} />

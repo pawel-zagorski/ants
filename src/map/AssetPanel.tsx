@@ -7,6 +7,7 @@ import {
   formatSpeedMetersPerSecond,
 } from './assetPanelFormatting'
 import { withBase } from '../basePath'
+import { MapOverlayPanel } from './MapOverlayPanel'
 import { baseStationCountsFor, droneTelemetryFor } from '../engine/telemetry'
 import type { FireRuntimeState, SimulationState } from '../engine/types'
 import { assetTypeLabel } from '../world/assetTypeLabel'
@@ -123,17 +124,18 @@ export function AssetPanel({
   const photo = assetPhotoFor(asset, isDrone)
 
   return (
-    <div className="asset-panel" role="dialog" aria-label={`${typeLabel} ${asset.id} status`}>
-      <img
-        className={photo.margin ? 'asset-panel-photo asset-panel-photo--margin' : 'asset-panel-photo'}
-        src={withBase(photo.src)}
-        alt={photo.alt}
-      />
+    <MapOverlayPanel className="asset-panel" role="dialog" aria-label={`${typeLabel} ${asset.id} status`}>
       <button type="button" className="asset-panel-close" onClick={onClose} aria-label="Close">
         &times;
       </button>
-      <h2 className="asset-panel-title">{asset.id}</h2>
-      <dl className="asset-panel-fields">
+      <div className="asset-panel-body">
+        <img
+          className={photo.margin ? 'asset-panel-photo asset-panel-photo--margin' : 'asset-panel-photo'}
+          src={withBase(photo.src)}
+          alt={photo.alt}
+        />
+        <h2 className="asset-panel-title">{asset.id}</h2>
+        <dl className="asset-panel-fields">
         <dt>Type</dt>
         <dd>{typeLabel}</dd>
         <dt>Position</dt>
@@ -195,6 +197,7 @@ export function AssetPanel({
           </>
         )}
       </dl>
+      </div>
       {isDrone && (canReturnToBase || showReturnEnvelope) && (
         <div className="asset-panel-drone-actions">
           {canReturnToBase && onReturnToBase && (
@@ -215,6 +218,6 @@ export function AssetPanel({
           )}
         </div>
       )}
-    </div>
+    </MapOverlayPanel>
   )
 }

@@ -1,5 +1,6 @@
 import { clearcutTierLabel } from './assetPanelFormatting'
 import { withBase } from '../basePath'
+import { MapOverlayPanel } from './MapOverlayPanel'
 import { isClearcutBingoRangeEligible } from '../engine/bingoRange'
 import { clearcutOrbitRadiusMeters } from '../engine/clearcutFootprint'
 import { formatScenarioDateTime, pad2 } from '../engine/scenarioEpoch'
@@ -141,26 +142,28 @@ export function ClearcutPanel({
   const bingoRange = clearcutBingoRangeDronesFor(clearcut, drones, simulationState, baseStations)
 
   return (
-    <div className="asset-panel clearcut-panel" role="dialog" aria-label={`Clearcut ${clearcut.id} status`}>
-      <img className="asset-panel-photo" src={withBase('/img/logging.jpg')} alt="Illegal Deforestation" />
+    <MapOverlayPanel className="asset-panel clearcut-panel" role="dialog" aria-label={`Clearcut ${clearcut.id} status`}>
       <button type="button" className="asset-panel-close" onClick={onClose} aria-label="Close">
         &times;
       </button>
-      <h2 className="asset-panel-title">{clearcut.id}</h2>
-      <dl className="asset-panel-fields">
-        <dt>Type</dt>
-        <dd>{CLEARCUT_TYPE_LABEL}</dd>
-        <dt>Detected By</dt>
-        <dd>{clearcut.detectedByAssetId ?? 'Unknown'}</dd>
-        <dt>Detected At</dt>
-        <dd>
-          {clearcut.detectedAtSimSeconds !== undefined
-            ? formatDetectedAt(clearcut.detectedAtSimSeconds, startDateTimeIso)
-            : 'Unknown'}
-        </dd>
-        <dt>Tier</dt>
-        <dd>{clearcutTierLabel(clearcut.tier)}</dd>
-      </dl>
+      <div className="asset-panel-body">
+        <img className="asset-panel-photo" src={withBase('/img/logging.jpg')} alt="Illegal Deforestation" />
+        <h2 className="asset-panel-title">{clearcut.id}</h2>
+        <dl className="asset-panel-fields">
+          <dt>Type</dt>
+          <dd>{CLEARCUT_TYPE_LABEL}</dd>
+          <dt>Detected By</dt>
+          <dd>{clearcut.detectedByAssetId ?? 'Unknown'}</dd>
+          <dt>Detected At</dt>
+          <dd>
+            {clearcut.detectedAtSimSeconds !== undefined
+              ? formatDetectedAt(clearcut.detectedAtSimSeconds, startDateTimeIso)
+              : 'Unknown'}
+          </dd>
+          <dt>Tier</dt>
+          <dd>{clearcutTierLabel(clearcut.tier)}</dd>
+        </dl>
+      </div>
       <div className="clearcut-panel-drones">
         <h3 className="clearcut-panel-drones-title">Bingo Range</h3>
         {bingoRange.length === 0 ? (
@@ -178,6 +181,6 @@ export function ClearcutPanel({
           </ul>
         )}
       </div>
-    </div>
+    </MapOverlayPanel>
   )
 }
