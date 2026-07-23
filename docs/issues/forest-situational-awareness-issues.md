@@ -571,3 +571,174 @@ A Drone dispatched on a One-Way Mission (issue U) orbits and maps (issue V's orb
 ### Blocked by
 
 U, V
+
+---
+
+**Issues X–BB** add **Illegal Deforestation** as a new detectable phenomenon plus a scenario to demo it, derived from a design session (see the updated `CONTEXT.md` and the new ADR-0009). Key decisions:
+
+- **Clearcut**: a new top-level domain concept modeled as a *sibling of `Fire`, not an `Event`* (parallels ADR-0004). It occupies a **static** hex **Clearcut Footprint** that never grows/shrinks, is detectable by **Drones only** (never Towers), and moves Undetected → Detected → Investigated like a Fire. Seen from a distance it is an estimate (a reused **Uncertainty Ellipse** with the time-growth term zeroed, since it never spreads); once investigated its real footprint becomes a **Confirmed Shape** that is exact and permanent (no staleness). Display label: "Illegal Deforestation".
+- **Clearcut Footprint** shape is authored as a frozen, *oriented ellipse* (size + orientation + elongation) — an elongated, road-aligned blob — reusing the hex-grid/growth-ellipse math but with no Wind term and no time term.
+- **Investigation** is Fire-style (fly out, orbit to reveal the shape) but gated by **Bingo Range only** — no One-Way Mission (a static, non-urgent target never justifies sacrificing a Drone).
+- **Discovered-on-site payoff**: when a Clearcut becomes Investigated, any Undetected `PersonSighting`s within a radius of its centroid are revealed, credited to the investigating Drone (reveal-on-investigation, not proximity/patrol).
+- **Patrol Route**: a new *optional* per-Drone `world.json` field — an ordered waypoint loop a Drone flies instead of the default base-station loop. Being a World property it applies across every Scenario (ADR-0002 kept intact); Drones without it keep the legacy base loop. Applied to the two Fixed-Wing Drones so one can pass near the Clearcut for a rough estimate-only detection.
+
+Dependency shape: **X and AA have no blockers and run in parallel**; then **Y → Z → BB** is a chain (BB also needs AA). The `CONTEXT.md` glossary terms (Clearcut, Clearcut Footprint, updated Uncertainty Ellipse, Patrol Route) are already committed alongside this issue list; ADR-0009 is authored in slice X.
+
+---
+
+## [ ] X — Clearcut concept: static footprint, drone-only detection, estimate view, red-tree marker + panel, Ground Truth
+
+### Parent
+
+Design session on Illegal Deforestation (see the note above and ADR-0009).
+
+### What to build
+
+Introduce **Clearcut** as a new top-level domain concept, a sibling of `Fire` (NOT a new `EventType`) — follow the ADR-0004 pattern that split `Fire` from `Event`. This is the foundational tracer bullet: a Clearcut spawns, gets detected by a Drone from a distance as a fuzzy estimate, renders a red-tree marker, opens a read-only panel with the `logging.jpg` photo, and its real static footprint is visible in Ground Truth View. No investigation/dispatch yet (that's Y).
+
+- **Runtime type**: add a `ClearcutRuntimeState` in `src/engine/types.ts` with its own tier field `'undetected' | 'detected' | 'investigated'` (mirror `FireRuntimeState`; note the middle tier is `detected`, since a Drone — not a Tower — detects it). Add `SimulationState.clearcuts` as a new sibling map alongside `events` and `fires`.
+- **Scenario schema**: add a `Clearcut` entry type to the scenario timed list (`src/scenario/types.ts`, `schema.ts`), validated/parsed distinctly (like the Fire ignition entry). Shape authoring fields: `position` (centroid), `spawnAtSimSeconds`, plus footprint size/orientation — e.g. `semiMajorAxisMeters`, `semiMinorAxisMeters` (or a single size + eccentricity), and `orientationDegrees`. No `durationSimSeconds` (never auto-resolves). Update `partitionScenarioEntries` in `advanceSimulation.ts` to route Clearcut entries into `clearcuts`.
+- **Static Clearcut Footprint**: add a pure function (e.g. `src/engine/clearcutFootprint.ts`) computing the fixed set of 50m hex cells for a Clearcut from its centroid + size + orientation as an oriented ellipse — reuse the hex-grid math in `growthEllipse.ts`/`hexGrid.ts`, but with **no wind term and no time term** (constant for the whole run). Unit-test determinism and that orientation/elongation actually rotate/stretch the cell set.
+- **Detection (drone-only)**: extend detection in `advanceSimulation.ts` so a Clearcut flips `undetected → detected` when any Drone comes within its detection radius of the Clearcut (position = centroid). Towers must NEVER detect a Clearcut. Detection is deterministic/sticky (ADR-0003) and records the detecting Drone id + sim-second. Payload does not gate detection (every Drone qualifies).
+- **Estimate (Uncertainty Ellipse, time term zeroed)**: for a `detected`-tier Clearcut, show a reused Uncertainty Ellipse in the default (fog-of-war) view, sized by the detecting Drone's distance only — the time-since-detection growth term is zeroed for Clearcuts (they don't spread). Add a new map layer (mirror `UncertaintyEllipseLayer.tsx`) or parameterize the existing one.
+- **Red-tree marker + icon**: add a Clearcut marker layer (mirror `FireMarkers.tsx`) and an icon (new `src/map/clearcutIcons.ts`) rendering a **red tree glyph** (not a two-letter label), with a faded/solid state treatment like `fireIcons.ts` (faded when undetected in Ground Truth View, solid once detected). Add the CSS in `index.css`. Only `detected`/`investigated` Clearcuts are clickable in the default view.
+- **Panel**: add a `ClearcutPanel` (mirror `FirePanel.tsx`) with the `public/img/logging.jpg` banner at top and fields Type ("Illegal Deforestation"), Detected By, Detected At (Scenario-Epoch calendar time), Tier. No dispatch UI yet (Y adds it). Wire selection into `RokuaMap.tsx` alongside the existing event/fire/asset selection (mutually exclusive). Move/ensure `public/img/logging.jpg` is committed.
+- **Ground Truth View**: render the real static Clearcut Footprint as a hex-tile layer (mirror `FireFootprintLayer.tsx`) when Ground Truth is ON, and show still-undetected Clearcuts faded.
+- **Minimal scenario for demoability**: create `public/scenario-illegal-deforestation.json` with a single Clearcut placed so a *default-patrol* Drone detects it (BB later re-tunes position + adds sightings + wind/epoch polish), a plausible `startDateTimeIso`, and a `wind` value (schema requires it; unused by the Clearcut). Register it in `src/scenario/bundledScenarios.ts` (display "Illegal Deforestation").
+- **ADR-0009**: write `docs/adr/0009-clearcut-static-fire-sibling.md` recording that Clearcut is modeled as a static Fire-sibling (not an Event), the trade-off considered (Event-type vs Fire-sibling), and the reuse of Fire's hex/estimate/confirmed-shape machinery. `CONTEXT.md` glossary terms already exist — ensure cross-references are consistent.
+
+### Acceptance criteria
+
+- [ ] `Clearcut` is a distinct concept: `ClearcutRuntimeState` with tiers `undetected|detected|investigated`, and `SimulationState.clearcuts` separate from `events`/`fires`; it is NOT in the `EventType` union
+- [ ] Scenario schema validates/parses a Clearcut entry distinctly (centroid, size, orientation, `spawnAtSimSeconds`, no `durationSimSeconds`); malformed input is rejected
+- [ ] Pure Clearcut Footprint function is deterministic and produces an oriented/elongated hex-cell set that does NOT change with elapsed time (unit-tested: same cells at t=0 and t=late; orientation rotates the set)
+- [ ] A Drone detects a Clearcut within range (unit test); a Tower never detects a Clearcut regardless of distance (unit test)
+- [ ] Default view shows a distance-sized Uncertainty Ellipse estimate for a `detected` Clearcut that does NOT grow over time (unit test at two elapsed times → same size)
+- [ ] Clearcut renders a red-tree marker; clicking a detected Clearcut opens a panel showing `logging.jpg`, Type, Detected By, Detected At (calendar), and Tier
+- [ ] Ground Truth View shows the real static Clearcut Footprint hex shape; default view does not
+- [ ] `scenario-illegal-deforestation.json` loads and runs against default `world.json`, is listed in the scenario picker, and produces a Drone Detection of its Clearcut
+- [ ] ADR-0009 exists; `CONTEXT.md` Clearcut terms are consistent; typecheck passes and the full test suite is green
+
+### Blocked by
+
+None — can start immediately.
+
+---
+
+## [ ] Y — Clearcut investigation: Bingo-Range dispatch + orbit → permanent Confirmed Shape
+
+### Parent
+
+Design session on Illegal Deforestation.
+
+### What to build
+
+Add operator-driven investigation of a Clearcut, reusing the Fire investigation machinery (`withManualFireDispatch`, `orbit.ts`, Confirmed Shape) but with two differences: **Bingo Range only** (no One-Way Mission), and the **Confirmed Shape is exact and permanent** (a Clearcut is static, so there is no staleness/refresh once mapped).
+
+- Extend `ClearcutPanel` (issue X) with a **single dispatch list gated by Bingo Range** — reuse `bingoRange.ts` distance/speed math (fly to Clearcut + one orbit lap of its extent + return to nearest Base Station). No One-Way Mission list/section. Unreachable Drones are excluded.
+- Add a manual-dispatch path for Clearcuts (mirror `withManualFireDispatch`): the Drone flies to the Clearcut, orbits its extent (radius scaled to the footprint bounding size), and on beginning the orbit the Clearcut flips `detected → investigated`.
+- Render a **Confirmed Shape** for an `investigated` Clearcut (mirror `ConfirmedShapeLayer.tsx`) in the default view, replacing the Uncertainty Ellipse. Because the footprint is static, the Confirmed Shape equals the real Clearcut Footprint exactly and stays permanent — it does NOT need per-tick live updates or a freeze-on-departure snapshot (it never goes stale).
+- A Bingo-Range Drone completes one orbit lap then returns to patrol (reuse issue V's completion logic).
+
+### Acceptance criteria
+
+- [ ] The Clearcut panel shows a single Bingo-Range dispatch list (no One-Way Mission section); unreachable/investigating/Lost Drones don't appear
+- [ ] Sending a Drone flies it to the Clearcut and orbits it; the Clearcut flips to `investigated`
+- [ ] An `investigated` Clearcut shows a Confirmed Shape (real footprint) in the default view in place of the Uncertainty Ellipse
+- [ ] The Confirmed Shape is exact and does not change/decay over time after investigation (unit test: identical cells long after the Drone leaves)
+- [ ] Bingo-Range classification for a Clearcut is unit-tested (clearly safe vs clearly unreachable), reusing the Fire distance/speed math
+- [ ] Typecheck passes and the full test suite is green
+
+### Blocked by
+
+X
+
+---
+
+## [ ] Z — Reveal nearby Person Sightings when a Clearcut is Investigated
+
+### Parent
+
+Design session on Illegal Deforestation.
+
+### What to build
+
+When a Clearcut transitions to `investigated` (issue Y — the Drone begins orbiting), reveal every still-`undetected` `PersonSighting` Event within a fixed radius of the Clearcut's centroid, as a "discovered-on-site" payoff. This is a reveal-on-investigation mechanism (b1 from the design session): proximity-authored (a radius around the centroid), NOT triggered by the Drone's own detection radius or patrol fly-by.
+
+- In `advanceSimulation.ts`, on the `detected → investigated` transition, flip qualifying `PersonSighting`s from `undetected` to `detected`, crediting the **investigating Drone** as the detecting asset and the current sim-second as the detection time. Size the reveal radius as an engine constant tuned so authored sightings around a Clearcut fall inside (document the constant).
+- These revealed sightings then behave exactly like any other detected Person Sighting: they show their normal detected marker, are clickable → existing `EventPanel`, and emit normal `PersonSighting detected` lines in the Event Log (no special panel/log wording; the Clearcut panel itself says nothing about them).
+- Sightings outside the radius, or already detected, are unaffected. Determinism preserved (ADR-0003).
+
+### Acceptance criteria
+
+- [ ] Investigating a Clearcut flips undetected `PersonSighting`s within the reveal radius to detected, credited to the investigating Drone, at the investigation sim-second (unit test)
+- [ ] `PersonSighting`s outside the radius stay undetected; already-detected ones are unchanged (unit test)
+- [ ] Revealed sightings render as normal detected markers, open the existing `EventPanel`, and produce normal Event Log lines
+- [ ] The reveal is deterministic (same scenario twice → identical revealed set + timestamps)
+- [ ] Typecheck passes and the full test suite is green
+
+### Blocked by
+
+Y
+
+---
+
+## [ ] AA — World waypoint Patrol Routes for the two Fixed-Wing Drones
+
+### Parent
+
+Design session on Illegal Deforestation.
+
+### What to build
+
+Add an optional **Patrol Route** to Drones so they can sweep arbitrary map waypoints instead of only looping their home Base Station. This is a World-level property (ADR-0002 kept intact): it applies across every Scenario. Independent of the Clearcut concept — can be built in parallel with issue X.
+
+- **Schema**: add an optional `patrolRoute?: LatLng[]` (ordered waypoints, flown as a closed loop) to `Drone` in `src/world/types.ts` and validate it in `src/world/schema.ts` (reject malformed points; empty/absent = legacy behavior).
+- **Engine**: in `advanceSimulation.ts` patrol movement, if a Drone has a `patrolRoute`, move it along the closed polyline of waypoints at its `patrolSpeedMetersPerSecond` (deterministic closed-form position from `elapsedSimSeconds`, like the existing circular loop — same determinism guarantees, phase offset from drone id acceptable). Drones without a `patrolRoute` keep today's base-station loop unchanged.
+- **world.json**: give the two Fixed-Wing Drones (`drone-2`, `drone-4`) map-sweeping `patrolRoute`s spanning a wide area (so BB can place a Clearcut ~1000–1400 m off one route). Leave both Quadrocopters on their base loops. Keep all other drone fields unchanged.
+- **Rendering**: ensure the drone flight-path overlay (`DroneFlightPaths`) reflects the waypoint route for routed Drones.
+- **Existing scenarios/tests**: rerouting the Fixed-Wing Drones may shift detection timings in the quiet-day/wildfire/hiker scenarios — update `bundledScenarios.integration.test.ts` and any other affected tests to match the new, still-deterministic behavior. `CONTEXT.md` already has the **Patrol Route** term.
+
+### Acceptance criteria
+
+- [ ] `Drone.patrolRoute` is an optional, validated `LatLng[]`; a Drone without it patrols exactly as before (regression: Quadrocopters unchanged)
+- [ ] A Drone with a `patrolRoute` deterministically flies the closed waypoint loop at its patrol speed (unit test: same `elapsedSimSeconds` → same position twice; position lies on the route polyline)
+- [ ] `drone-2` and `drone-4` have wide map-sweeping routes in `world.json`; `drone-1`/`drone-3` keep base loops
+- [ ] The flight-path overlay shows the waypoint route for routed Drones
+- [ ] All existing scenario/integration tests are updated and green under the new patrol behavior
+- [ ] Typecheck passes and the full test suite is green
+
+### Blocked by
+
+None — can start immediately (parallel with X).
+
+---
+
+## [ ] BB — Author & register the tuned "Illegal Deforestation" scenario
+
+### Parent
+
+Design session on Illegal Deforestation.
+
+### What to build
+
+Finalize and tune `public/scenario-illegal-deforestation.json` (created minimally in issue X) into the full demo scenario, now that the Clearcut concept (X), investigation (Y), sighting reveal (Z), and Fixed-Wing Patrol Routes (AA) all exist.
+
+- **Clearcut**: spawned at `spawnAtSimSeconds: 0`, positioned ~1000–1400 m off one Fixed-Wing Drone's `patrolRoute` (issue AA) so that Drone passes **close enough for a rough, estimate-only Detection within 5 simulated minutes** but never orbits it (no accidental investigation). Give it an oriented/elongated footprint aligned to look like a road-side logging site.
+- **Person Sightings**: author **3** `PersonSighting` Events clustered around the Clearcut, within issue Z's reveal radius, spawned at T+0 but positioned so no patrol fly-by detects them early (they should only appear when the operator investigates the Clearcut).
+- **Wind + epoch**: set a plausible `startDateTimeIso` (Scenario Epoch) and a nominal `wind` (unused by the Clearcut, but schema-required).
+- **Registration**: ensure it's registered in `bundledScenarios.ts` with the display name "Illegal Deforestation".
+- **Integration test**: add coverage in `bundledScenarios.integration.test.ts` asserting: (a) a Fixed-Wing Drone detects the Clearcut at the `detected` tier within 5 simulated minutes; (b) the initial Detection is estimate-only (tier `detected`, not `investigated`); (c) after a manual Bingo-Range dispatch + orbit, the Clearcut becomes `investigated` and the 3 nearby Person Sightings become detected; (d) determinism (same run twice → identical detection timeline).
+
+### Acceptance criteria
+
+- [ ] Scenario loads/runs against default `world.json`, listed as "Illegal Deforestation" in the picker
+- [ ] A Fixed-Wing Drone gets a rough, estimate-only Detection of the Clearcut within 5 simulated minutes (integration test), without auto-investigating
+- [ ] Manually dispatching a Bingo-Range Drone investigates the Clearcut (Confirmed Shape appears) and reveals the 3 clustered Person Sightings (integration test)
+- [ ] The 3 sightings are NOT detected before the investigation (no early patrol fly-by detection)
+- [ ] Scenario run is deterministic (same detection timeline twice)
+- [ ] Typecheck passes and the full test suite is green
+
+### Blocked by
+
+X, Y, Z, AA
