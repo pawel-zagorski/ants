@@ -61,6 +61,20 @@ export interface Drone {
   patrolRadiusMeters?: number
   patrolSpeedMetersPerSecond?: number
   detectionRadiusMeters?: number
+  /**
+   * An optional ordered list of map waypoints (issue AA, `CONTEXT.md`'s
+   * **Patrol Route** entry) the Drone flies as a *closed* loop — the last
+   * waypoint connects back to the first — at its
+   * `patrolSpeedMetersPerSecond`, instead of the default tight
+   * (Quadrocopter) / long-perimeter (Fixed-Wing Drone) circular loop around
+   * its home Base Station. Being a World (not Scenario) property, a Patrol
+   * Route applies across every Scenario (ADR-0002 kept intact). Omitted or
+   * empty (`[]`) means "no Patrol Route": the Drone falls back to the legacy
+   * base-station loop, unchanged. A route needs at least two waypoints to fly
+   * a polyline — a shorter one is treated the same as none (see
+   * `engine/advanceSimulation.ts`).
+   */
+  patrolRoute?: LatLng[]
   model: string
   payload: DronePayload
   maxEnduranceSimSeconds: number

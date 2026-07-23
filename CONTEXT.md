@@ -40,6 +40,10 @@ _Avoid_: Quad, multirotor
 A Drone that patrols a long perimeter loop at higher speed/range than a Quadrocopter, and circles (rather than hovers over) an Event when investigating, since it cannot stop mid-air.
 _Avoid_: Winged drone, plane drone
 
+**Patrol Route**:
+An optional ordered list of map waypoints authored on a Drone in `world.json` that the Drone flies as a closed loop instead of the default tight/perimeter loop around its home Base Station — letting a Drone sweep arbitrary points across the map, not just circle its Base Station. Being a World (not Scenario) property, a Patrol Route applies across every Scenario (ADR-0002 kept intact). A Drone with no Patrol Route falls back to the legacy base-station loop.
+_Avoid_: Patrol path (that's the rendered flight-path overlay), waypoint mission, flight plan
+
 **Drone Model**:
 A Drone's real-world product identity (e.g. "DJI Mavic 4 Pro", "FlyEye") — distinct from `DroneType` (Quadrocopter vs. Fixed-Wing Drone, which governs simulated behavior) and from **Payload**. Two Drones can share a Drone Model (e.g. both Fixed-Wing Drones fly as a FlyEye) while differing in behavior overrides, or share a `DroneType` while being different Drone Models with different specs.
 _Avoid_: Drone type (ambiguous with `DroneType`), make/manufacturer
@@ -78,6 +82,14 @@ _Avoid_: Incident, alert (an Event is the thing itself; an "alert" would be a UI
 A ground-truth wildfire ignition spawned by a Scenario at a fixed point and time, sharing the Scenario's timed-list authoring with Events but modeled separately: once ignited it grows continuously across a Fire Footprint biased downwind by the Scenario's Wind, rather than sitting static like an Event. Progresses through its own tiers (Undetected → Tower-Detected → Investigated) instead of the Event's Undetected → Detected → Resolved, and never auto-resolves.
 _Avoid_: Fire Event, wildfire event (use "Fire" alone; it is not a kind of Event)
 
+**Clearcut**:
+A ground-truth illegal-deforestation site spawned by a Scenario at a fixed point and time (typically `spawnAtSimSeconds: 0`), sharing the Scenario's timed-list authoring with Events and Fires but modeled as a sibling of **Fire**, not a kind of **Event**. Occupies a static Clearcut Footprint (a fixed set of hex cells that never grows or shrinks over the run — the one way it differs from a Fire), is detectable by Drones only (never Towers), and progresses through Fire-style tiers Undetected → Detected → Investigated (never auto-resolves). Seen from a distance it is known only as an estimate (like a Fire's Uncertainty Ellipse); once a Drone investigates it, its real footprint becomes a Confirmed Shape and any Undetected Person Sightings within a radius of its centroid are revealed as a discovered-on-site payoff (the investigating Drone becomes their detector). Display label: "Illegal Deforestation".
+_Avoid_: Deforestation Event, logging event (it is not an Event); Clearcut Event; Fire (a Clearcut does not burn or spread)
+
+**Clearcut Footprint**:
+The real, ground-truth set of hexagonal cells (same 50m local axial grid as a Fire Footprint) occupied by a given Clearcut. Unlike a Fire Footprint it is fixed for the whole run — computed once from the Clearcut's authored size and orientation as a static, oriented ellipse (an elongated, road-aligned blob rather than the Fire's downwind-biased Growth Ellipse), with no Wind term and no time term. Contrast with the estimate shown before investigation and the Confirmed Shape shown after.
+_Avoid_: Clear-cut area, logging area, hex grid (alone — "Clearcut Footprint" names the actual cleared cells)
+
 **Wind**:
 A fixed direction and speed authored once per Scenario (not on World), constant for the whole run, that biases Fire spread downwind. Kept scenario-fixed and hand-authored rather than randomized or time-varying, to preserve ADR-0003's reproducibility guarantee.
 _Avoid_: Weather (Wind is the only weather-like factor modeled — no rain/humidity/temperature)
@@ -91,7 +103,7 @@ The deterministic model governing a Fire Footprint's shape over time: an ellipse
 _Avoid_: Spread model (too generic — "Growth Ellipse" names the specific mechanism)
 
 **Uncertainty Ellipse**:
-The map overlay shown for a Fire that is Tower-Detected but not yet Investigated: an ellipse standing in for the Fire's true position/size, sized by the detecting Tower's distance (further = blurrier) and growing further with elapsed time since Detection, since an uninvestigated Fire may have spread beyond what the Tower last implied. Shown in the default (fog-of-war) view in place of the real Fire Footprint.
+The map overlay shown for a Fire or Clearcut that has been Detected but not yet Investigated: an ellipse standing in for the true position/size, sized by the detecting asset's distance (further = blurrier). For a Fire it also grows with elapsed time since Detection, since an uninvestigated Fire may have spread beyond what the detector last implied; for a Clearcut this time term is zeroed (a Clearcut never spreads, so its estimate is a fixed, distance-only blur that does not grow while uninvestigated). Shown in the default (fog-of-war) view in place of the real Fire Footprint / Clearcut Footprint.
 _Avoid_: Detection radius, error ellipse
 
 **Confirmed Shape**:

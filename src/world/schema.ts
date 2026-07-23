@@ -79,6 +79,22 @@ function collectBaseStationIssues(value: unknown, path: string, issues: string[]
   }
 }
 
+/**
+ * Validates a Drone's optional `patrolRoute` (issue AA): when present it must
+ * be an array of valid `{ lat, lng }` waypoints (each checked via
+ * {@link collectLatLngIssues}). An empty array is accepted — it means "no
+ * Patrol Route", the legacy base-station loop (see `Drone.patrolRoute`'s doc
+ * comment and `engine/advanceSimulation.ts`). Absent is likewise fine.
+ */
+function collectPatrolRouteIssues(value: unknown, path: string, issues: string[]): void {
+  if (value === undefined) return
+  if (!Array.isArray(value)) {
+    issues.push(`${path} must be an array of { lat, lng } waypoints when provided`)
+    return
+  }
+  value.forEach((waypoint, index) => collectLatLngIssues(waypoint, `${path}[${index}]`, issues))
+}
+
 /** Validates an optional positive-number field, pushing an issue only when the field is present but invalid. */
 function collectOptionalPositiveNumberIssues(value: unknown, path: string, issues: string[]): void {
   if (value === undefined) return
@@ -122,6 +138,7 @@ function collectDroneIssues(value: unknown, path: string, issues: string[]): voi
   collectOptionalPositiveNumberIssues(drone.patrolRadiusMeters, `${path}.patrolRadiusMeters`, issues)
   collectOptionalPositiveNumberIssues(drone.patrolSpeedMetersPerSecond, `${path}.patrolSpeedMetersPerSecond`, issues)
   collectOptionalPositiveNumberIssues(drone.detectionRadiusMeters, `${path}.detectionRadiusMeters`, issues)
+  collectPatrolRouteIssues(drone.patrolRoute, `${path}.patrolRoute`, issues)
   collectDroneSpecIssues(drone, path, issues)
 }
 

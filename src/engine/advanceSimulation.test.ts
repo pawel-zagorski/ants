@@ -76,6 +76,88 @@ describe('initializeSimulationState patrol parameter overrides', () => {
   })
 })
 
+describe('patrol routes (issue AA)', () => {
+  const ROUTE = [
+    { lat: 64.55, lng: 26.05 },
+    { lat: 64.55, lng: 26.45 },
+    { lat: 64.45, lng: 26.45 },
+    { lat: 64.45, lng: 26.05 },
+  ]
+
+  const routedWorld: World = createWorldFixture({
+    drones: [
+      {
+        id: 'routed-1',
+        type: 'FixedWingDrone',
+        position: { lat: 64.5, lng: 26.25 },
+        homeBaseStationId: 'base-1',
+        ...droneSpecFixture,
+        patrolSpeedMetersPerSecond: 25,
+        patrolRoute: ROUTE,
+      },
+      {
+        id: 'unrouted-1',
+        type: 'Quadrocopter',
+        position: { lat: 64.5, lng: 26.25 },
+        homeBaseStationId: 'base-1',
+        ...droneSpecFixture,
+      },
+    ],
+  })
+
+  /** Perpendicular distance (meters) from `p` to the closed polyline through `route`. */
+  function distanceToRouteMeters(p: { lat: number; lng: number }): number {
+    return Math.min(
+      ...ROUTE.map((a, i) => {
+        const b = ROUTE[(i + 1) % ROUTE.length]
+        const abLat = b.lat - a.lat
+        const abLng = b.lng - a.lng
+        const denom = abLat * abLat + abLng * abLng
+        const t = denom === 0 ? 0 : Math.max(0, Math.min(1, ((p.lat - a.lat) * abLat + (p.lng - a.lng) * abLng) / denom))
+        return haversineDistanceMeters(p, { lat: a.lat + abLat * t, lng: a.lng + abLng * t })
+      }),
+    )
+  }
+
+  it('flies a routed Drone along its waypoint loop, staying on the polyline at every tick', () => {
+    const state = initializeSimulationState(routedWorld, emptyScenario)
+    for (const elapsedSimSeconds of [0, 60, 137, 800, 3000]) {
+      const advanced = advanceSimulation(state, elapsedSimSeconds)
+      expect(distanceToRouteMeters(advanced.dronePatrol['routed-1'].position)).toBeLessThan(2)
+    }
+  })
+
+  it('is deterministic: a routed Drone has the same position twice for the same elapsedSimSeconds', () => {
+    const state = initializeSimulationState(routedWorld, emptyScenario)
+    expect(advanceSimulation(state, 137).dronePatrol['routed-1'].position).toEqual(
+      advanceSimulation(state, 137).dronePatrol['routed-1'].position,
+    )
+  })
+
+  it('actually sweeps a wide area — far beyond a base-station loop radius', () => {
+    const state = initializeSimulationState(routedWorld, emptyScenario)
+    const base = routedWorld.baseStations[0].position
+    let maxDistanceFromBase = 0
+    for (let elapsedSimSeconds = 0; elapsedSimSeconds <= 3000; elapsedSimSeconds += 30) {
+      const position = advanceSimulation(state, elapsedSimSeconds).dronePatrol['routed-1'].position
+      maxDistanceFromBase = Math.max(maxDistanceFromBase, haversineDistanceMeters(base, position))
+    }
+    // The default Fixed-Wing base loop radius is 2500m; a map-sweeping route
+    // ranges much farther from its home Base Station than that.
+    expect(maxDistanceFromBase).toBeGreaterThan(8000)
+  })
+
+  it('leaves a Drone without a patrolRoute on its unchanged tight base-station loop (no regression)', () => {
+    const state = initializeSimulationState(routedWorld, emptyScenario)
+    const base = routedWorld.baseStations[0].position
+    const radius = state.dronePatrol['unrouted-1'].patrolRadiusMeters
+    for (const elapsedSimSeconds of [0, 137, 1000, 3000]) {
+      const position = advanceSimulation(state, elapsedSimSeconds).dronePatrol['unrouted-1'].position
+      expect(haversineDistanceMeters(base, position)).toBeLessThanOrEqual(radius + 1)
+    }
+  })
+})
+
 describe('advanceSimulation', () => {
   it('is pure: does not mutate the state object passed in', () => {
     const state = initializeSimulationState(world, emptyScenario)

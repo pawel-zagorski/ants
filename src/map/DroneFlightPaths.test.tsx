@@ -63,11 +63,36 @@ function renderLayer(state: SimulationState) {
 }
 
 describe('DroneFlightPaths', () => {
-  it('renders nothing for a patrolling Drone', () => {
+  it('renders nothing for a patrolling Drone on the legacy base-station loop', () => {
     renderLayer(stateFixture({ 'drone-1': { mode: 'patrolling' } }, { 'drone-1': patrolFixture() }))
 
     expect(document.querySelectorAll('path.drone-trajectory')).toHaveLength(0)
     expect(document.querySelectorAll('path.drone-orbit')).toHaveLength(0)
+    expect(document.querySelectorAll('path.drone-route')).toHaveLength(0)
+  })
+
+  it('renders a dashed closed route loop for a patrolling routed Drone (issue AA)', () => {
+    renderLayer(
+      stateFixture(
+        { 'drone-1': { mode: 'patrolling' } },
+        {
+          'drone-1': patrolFixture({
+            patrolRoute: [
+              { lat: 64.55, lng: 26.3 },
+              { lat: 64.55, lng: 26.05 },
+              { lat: 64.45, lng: 26.05 },
+              { lat: 64.45, lng: 26.3 },
+            ],
+          }),
+        },
+      ),
+    )
+
+    const route = document.querySelector('path.drone-route')
+    expect(route).not.toBeNull()
+    expect(route?.getAttribute('stroke')).toBe('#000000')
+    expect(route?.getAttribute('stroke-dasharray')).not.toBeNull()
+    expect(document.querySelectorAll('path.drone-trajectory')).toHaveLength(0)
   })
 
   it('renders one black trajectory line for an investigating Drone', () => {

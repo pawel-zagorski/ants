@@ -50,7 +50,13 @@
       "maxEnduranceSimSeconds": 9900,
       "cruiseSpeedMetersPerSecond": 27,
       "datalinkRangeMeters": 50000,
-      "imageUrl": "/img/flyeye.jpg"
+      "imageUrl": "/img/flyeye.jpg",
+      "patrolRoute": [
+        { "lat": 64.55, "lng": 26.3 },
+        { "lat": 64.55, "lng": 26.05 },
+        { "lat": 64.45, "lng": 26.05 },
+        { "lat": 64.45, "lng": 26.3 }
+      ]
     },
     {
       "id": "drone-3",
@@ -80,7 +86,13 @@
       "maxEnduranceSimSeconds": 9900,
       "cruiseSpeedMetersPerSecond": 27,
       "datalinkRangeMeters": 50000,
-      "imageUrl": "/img/flyeye.jpg"
+      "imageUrl": "/img/flyeye.jpg",
+      "patrolRoute": [
+        { "lat": 64.7, "lng": 26.45 },
+        { "lat": 64.7, "lng": 26.95 },
+        { "lat": 64.58, "lng": 26.95 },
+        { "lat": 64.58, "lng": 26.45 }
+      ]
     }
   ]
 }

@@ -5,6 +5,7 @@ import { appendLogEntry } from './eventLog'
 import type { EventLogEntry } from './eventLog'
 import { fireFootprintHexCells, fireOrbitRadiusMetersAt } from './growthEllipse'
 import { orbitLapDurationSimSeconds, orbitPositionFor } from './orbit'
+import { patrolRoutePerimeterMeters, patrolRoutePositionAt } from './patrolRoute'
 import { remainingEnduranceSimSecondsAt } from './telemetry'
 import type { Scenario, ScenarioEntry, ScenarioEvent, ScenarioFireIgnition, Wind } from '../scenario/types'
 import type { BaseStation, DroneType, World } from '../world/types'
@@ -919,6 +920,44 @@ export function patrolAngleRadiansAt(patrol: DronePatrolState, elapsedSimSeconds
 }
 
 /**
+ * Whether `patrol` has a usable Patrol Route (issue AA) — at least two
+ * waypoints to fly a polyline. A `0`/`1`-waypoint route is treated as none,
+ * falling back to the circular base-station loop (see `Drone.patrolRoute`).
+ */
+function hasPatrolRoute(patrol: DronePatrolState): patrol is DronePatrolState & { patrolRoute: LatLng[] } {
+  return patrol.patrolRoute !== undefined && patrol.patrolRoute.length >= 2
+}
+
+/**
+ * A patrolling Drone's closed-form position at `elapsedSimSeconds` — the
+ * single place the "route vs. base-station loop" choice is made (issue AA).
+ * A Drone with a world-authored {@link DronePatrolState.patrolRoute} flies
+ * that closed waypoint loop ({@link patrolRoutePositionAt}) at its resolved
+ * patrol linear speed (the same `patrolLinearSpeedMetersPerSecond` its
+ * circular loop would use, so a routed Drone moves as fast as its
+ * `patrolSpeedMetersPerSecond` asks); every other Drone keeps slice C's
+ * circular base-station loop, byte-for-byte unchanged. The per-Drone phase
+ * offset is reused from `phaseOffsetRadians` (converted to a fraction of the
+ * loop perimeter), so two Drones sharing a route still start spread apart —
+ * the route analogue of the circular loop's angular phase offset.
+ */
+function patrollingPositionAt(patrol: DronePatrolState, elapsedSimSeconds: number): LatLng {
+  if (hasPatrolRoute(patrol)) {
+    const perimeterMeters = patrolRoutePerimeterMeters(patrol.patrolRoute)
+    const phaseOffsetMeters = perimeterMeters * (patrol.phaseOffsetRadians / (2 * Math.PI))
+    return patrolRoutePositionAt(
+      patrol.patrolRoute,
+      patrolLinearSpeedMetersPerSecond(patrol),
+      elapsedSimSeconds,
+      phaseOffsetMeters,
+    )
+  }
+
+  const angleRadians = patrolAngleRadiansAt(patrol, elapsedSimSeconds)
+  return pointOnCircle(patrol.patrolCenter, patrol.patrolRadiusMeters, angleRadians)
+}
+
+/**
  * A Drone's position at `elapsedSimSeconds` given its current `activity`:
  * its normal closed-form patrol-loop position while `'patrolling'` (slice
  * C, unchanged); a hover/circle position around the assigned Event while
@@ -1014,8 +1053,7 @@ function positionForActivity(
     return activity.position
   }
 
-  const angleRadians = patrolAngleRadiansAt(patrol, elapsedSimSeconds)
-  return pointOnCircle(patrol.patrolCenter, patrol.patrolRadiusMeters, angleRadians)
+  return patrollingPositionAt(patrol, elapsedSimSeconds)
 }
 
 /**
@@ -1172,7 +1210,13 @@ export function initializeSimulationState(world: World, scenario: Scenario): Sim
     const phaseOffsetRadians = phaseOffsetForDroneId(drone.id)
     const patrolCenter = homeBaseStation.position
 
-    dronePatrolParams[drone.id] = {
+    // A Patrol Route (issue AA) is a World-authored closed waypoint loop the
+    // Drone flies instead of the circular base-station loop; the circular
+    // fields above stay populated regardless (a routed Drone still uses its
+    // patrol linear speed to fly the route). Only carried through when usable
+    // (>= 2 waypoints) — an absent/empty/single-point route falls back to the
+    // legacy loop (see `Drone.patrolRoute`/`patrollingPositionAt`).
+    const patrol: DronePatrolState = {
       droneType: drone.type,
       patrolCenter,
       patrolRadiusMeters: radiusMeters,
@@ -1181,8 +1225,11 @@ export function initializeSimulationState(world: World, scenario: Scenario): Sim
       detectionRadiusMeters,
       maxEnduranceSimSeconds: drone.maxEnduranceSimSeconds,
       cruiseSpeedMetersPerSecond: drone.cruiseSpeedMetersPerSecond,
-      position: pointOnCircle(patrolCenter, radiusMeters, phaseOffsetRadians),
+      ...(drone.patrolRoute && drone.patrolRoute.length >= 2 ? { patrolRoute: drone.patrolRoute } : {}),
+      position: patrolCenter,
     }
+    patrol.position = patrollingPositionAt(patrol, 0)
+    dronePatrolParams[drone.id] = patrol
     initialDroneActivity[drone.id] = { mode: 'patrolling' }
   }
 
