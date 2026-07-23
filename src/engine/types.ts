@@ -154,6 +154,55 @@ export type DroneActivityState =
       orbitRadiusMeters: number
     }
   /**
+   * The Clearcut sibling of `'travelingToFire'` (issue Y, ADR-0009): entered
+   * the instant the operator dispatches a Drone to a Clearcut
+   * (`withManualClearcutDispatch`). Same shape and travel math — the Drone
+   * flies straight toward the Clearcut's orbit-entry point at
+   * `DronePatrolState.cruiseSpeedMetersPerSecond`, linearly interpolating
+   * from `departurePosition` — but with no `missionKind` at all: a Clearcut
+   * dispatch is always the round-trip/Bingo-Range equivalent (there is no
+   * One-Way Mission for a static, non-urgent target — `ClearcutPanel` only
+   * ever offers a single Bingo-Range-gated "Send" list). `orbitRadiusMeters`
+   * is a one-time snapshot of the Clearcut's fixed footprint's bounding
+   * radius (`clearcutFootprint.ts`'s `clearcutOrbitRadiusMeters`) — constant
+   * for the whole investigation, same "fixed for this investigation's whole
+   * duration" reason as `'travelingToFire'`'s own snapshot, except here it
+   * never needed to be *re*-snapshotted per-tick in the first place, since a
+   * Clearcut Footprint never grows. Transitions to `'investigatingClearcut'`
+   * (via `activityAfterInvestigationExpiry`) the tick the elapsed travel
+   * time meets or exceeds the distance ÷ cruise-speed travel duration.
+   */
+  | {
+      mode: 'travelingToClearcut'
+      assignedClearcutId: string
+      departurePosition: LatLng
+      departureSimSeconds: number
+      orbitRadiusMeters: number
+    }
+  /**
+   * The Clearcut sibling of `'investigatingFire'` (issue Y, ADR-0009): same
+   * shape and orbit math (`engine/orbit.ts`), minus `missionKind` (a
+   * Clearcut investigation is always the Bingo-Range/round-trip kind — see
+   * `'travelingToClearcut'`'s doc comment). Ends after exactly one full
+   * orbit lap (`orbitLapDurationSimSeconds`, checked in
+   * `activityAfterInvestigationExpiry`, identical timing rule to a
+   * `'roundTrip'` Fire investigation), transitioning to `'returningToBase'`
+   * (reused verbatim — a return flight to `patrolCenter` looks the same
+   * regardless of whether the Drone was orbiting a Fire or a Clearcut).
+   * The instant this mode begins, the assigned Clearcut's `tier` ratchets
+   * `'detected' -> 'investigated'` (mirrors `isAnyDroneOrbitingFire`/
+   * `fireWithOrbitStarted`, but with no per-tick Confirmed Shape
+   * recompute needed at all — a Clearcut Footprint is static, so its
+   * Confirmed Shape is simply the real footprint, always, once
+   * `'investigated'` — see `ClearcutRuntimeState`'s doc comment).
+   */
+  | {
+      mode: 'investigatingClearcut'
+      assignedClearcutId: string
+      investigationStartedAtSimSeconds: number
+      orbitRadiusMeters: number
+    }
+  /**
    * Return-flight state entered once a `'roundTrip'` Drone's single orbit lap
    * completes: the Drone flies straight from the orbit-exit point back toward
    * its `DronePatrolState.patrolCenter` at `cruiseSpeedMetersPerSecond`,
@@ -333,9 +382,17 @@ export interface FireRuntimeState {
  * `'detected'` middle tier rather than `'towerDetected'`, since a Drone
  * (never a Tower) is what first moves a Clearcut out of `'undetected'`
  * (see `detectingDroneIdForClearcut` in `advanceSimulation.ts`).
- * `'investigated'` (issue Y) is a later, monotonic-forward ratchet — once
- * a Clearcut is `'investigated'` its tier never reverts, same sticky spirit
- * as `FireTier`/`EventStatus`.
+ * `'investigated'` (issue Y) is a later, monotonic-forward ratchet — reached
+ * the instant a Drone begins orbiting it (`isAnyDroneOrbitingClearcut` in
+ * `advanceSimulation.ts`) — once a Clearcut is `'investigated'` its tier
+ * never reverts, same sticky spirit as `FireTier`/`EventStatus`. Unlike a
+ * Fire, there is no separate Confirmed Shape field to track here at all:
+ * because a Clearcut Footprint is static (`ClearcutRuntimeState`'s own doc
+ * comment), the Confirmed Shape for an `'investigated'` Clearcut is simply
+ * `clearcutFootprint.ts`'s `clearcutFootprintHexCells` applied to this same
+ * `ClearcutRuntimeState`'s own shape fields — exact and permanent by
+ * construction, with no per-tick recompute and no freeze-on-departure
+ * snapshot needed (see `map/ClearcutConfirmedShapeLayer.tsx`).
  */
 export type ClearcutTier = 'undetected' | 'detected' | 'investigated'
 

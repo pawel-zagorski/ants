@@ -12,6 +12,9 @@ export type EventLogKind =
   | 'droneDispatchedOneWay'
   | 'droneBeganFireOrbit'
   | 'droneReturningAfterOrbit'
+  | 'droneDispatchedToClearcut'
+  | 'droneBeganClearcutOrbit'
+  | 'droneReturningAfterClearcutOrbit'
   | 'droneRecalledToBase'
   | 'droneResumedPatrol'
   | 'droneGrounded'
@@ -28,6 +31,8 @@ export interface EventLogEntry {
   eventId?: string
   eventType?: EventType
   fireId?: string
+  /** The Clearcut this entry concerns (issue Y) — the Clearcut sibling of `fireId`. */
+  clearcutId?: string
   baseStationId?: string
   missionKind?: 'roundTrip' | 'oneWay'
   position?: LatLng

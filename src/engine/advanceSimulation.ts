@@ -1,5 +1,6 @@
 import { distanceMetersBetween, interpolateLatLng, pointOnCircle, tangentialSpeedMetersPerSecond } from '../map/geo'
 import type { LatLng } from '../map/geo'
+import { clearcutOrbitRadiusMeters } from './clearcutFootprint'
 import { INVESTIGATION_DURATION_SIM_SECONDS, investigatePositionFor } from './dispatch'
 import { appendLogEntry } from './eventLog'
 import type { EventLogEntry } from './eventLog'
@@ -570,25 +571,69 @@ function clearcutWithDetectionApplied(
   }
 }
 
+/** Whether any Drone in `droneActivity` is, this tick, `'investigatingClearcut'` `clearcutId` specifically — the Clearcut sibling of {@link isAnyDroneOrbitingFire} (issue Y). */
+function isAnyDroneOrbitingClearcut(clearcutId: string, droneActivity: Record<string, DroneActivityState>): boolean {
+  return Object.values(droneActivity).some(
+    (activity) => activity.mode === 'investigatingClearcut' && activity.assignedClearcutId === clearcutId,
+  )
+}
+
+/**
+ * Layers issue Y's `'investigated'` tier ratchet on top of `clearcut`
+ * (already run through {@link clearcutWithDetectionApplied}) — the
+ * Clearcut sibling of {@link fireWithConfirmedShapeApplied}, dramatically
+ * simplified since a Clearcut Footprint is static: there is no live
+ * per-tick Confirmed Shape to (re)derive and no freeze-on-departure
+ * snapshot to carry forward, because `clearcutFootprintHexCells` applied to
+ * this same `ClearcutRuntimeState`'s own fixed shape fields is *always*
+ * the exact, permanent Confirmed Shape once `'investigated'` (see
+ * `ClearcutTier`'s doc comment and `map/ClearcutConfirmedShapeLayer.tsx`,
+ * which reads straight off `tier`/the shape fields with no extra state).
+ * Ratchets to `'investigated'` — sticky, monotonic, never reverting — the
+ * instant {@link isAnyDroneOrbitingClearcut} this tick, or if it already
+ * was `'investigated'` (carried forward from `previousClearcutState`,
+ * mirroring every other sticky tier/status field in this engine).
+ * Otherwise returns `clearcut` unchanged — still whichever of
+ * `'undetected'`/`'detected'` {@link clearcutWithDetectionApplied}
+ * produced.
+ */
+function clearcutWithInvestigationApplied(
+  clearcut: ClearcutRuntimeState,
+  previousClearcutState: ClearcutRuntimeState | undefined,
+  droneActivity: Record<string, DroneActivityState>,
+): ClearcutRuntimeState {
+  if (previousClearcutState?.tier === 'investigated' || isAnyDroneOrbitingClearcut(clearcut.id, droneActivity)) {
+    return { ...clearcut, tier: 'investigated' }
+  }
+
+  return clearcut
+}
+
 /**
  * The Clearcut mirror of {@link firesAt} (ADR-0009): starts from {@link
- * spawnedClearcutsAt}'s fresh snapshot, then runs each Clearcut through
- * {@link clearcutWithDetectionApplied} against `incomingClearcuts` (the
- * previous tick's `SimulationState.clearcuts`, for sticky tier) and the
- * current tick's `dronePatrol` positions. Drone-only detection, so — unlike
- * `firesAt` — no `towerDetection` argument at all. Same tick-resolution
- * caveat as `eventsAt`/`firesAt` applies.
+ * spawnedClearcutsAt}'s fresh snapshot, runs each Clearcut through {@link
+ * clearcutWithDetectionApplied} against `incomingClearcuts` (the previous
+ * tick's `SimulationState.clearcuts`, for sticky tier) and the current
+ * tick's `dronePatrol` positions, then layers {@link
+ * clearcutWithInvestigationApplied} (issue Y) on top using this tick's
+ * already-derived `droneActivity` (post-expiry-check — see
+ * `deriveDronesEventsAndFires`'s call order, mirroring `firesAt`'s own).
+ * Drone-only detection, so — unlike `firesAt` — no `towerDetection`
+ * argument at all. Same tick-resolution caveat as `eventsAt`/`firesAt`
+ * applies.
  */
 function clearcutsAt(
   scenarioClearcuts: readonly ScenarioClearcut[],
   elapsedSimSeconds: number,
   incomingClearcuts: Record<string, ClearcutRuntimeState>,
   dronePatrol: Record<string, DronePatrolState>,
+  droneActivity: Record<string, DroneActivityState>,
 ): Record<string, ClearcutRuntimeState> {
   const clearcuts: Record<string, ClearcutRuntimeState> = {}
 
   for (const [id, clearcut] of Object.entries(spawnedClearcutsAt(scenarioClearcuts, elapsedSimSeconds))) {
-    clearcuts[id] = clearcutWithDetectionApplied(clearcut, incomingClearcuts[id], elapsedSimSeconds, dronePatrol)
+    const detected = clearcutWithDetectionApplied(clearcut, incomingClearcuts[id], elapsedSimSeconds, dronePatrol)
+    clearcuts[id] = clearcutWithInvestigationApplied(detected, incomingClearcuts[id], droneActivity)
   }
 
   return clearcuts
@@ -673,6 +718,7 @@ function activityAfterInvestigationExpiry(
   elapsedSimSeconds: number,
   patrol: DronePatrolState,
   incomingFires: Record<string, FireRuntimeState>,
+  incomingClearcuts: Record<string, ClearcutRuntimeState>,
 ): { activity: DroneActivityState; entries: LogEntryDraft[] } {
   const entries: LogEntryDraft[] = []
   let current = incomingActivity
@@ -683,7 +729,14 @@ function activityAfterInvestigationExpiry(
   // accumulating a Log Entry for every intermediate hop (ADR-0008) so none is
   // missed even when several collapse into a single `advanceSimulation` call.
   for (;;) {
-    const { activity: next, entry } = activityAfterOneTransition(droneId, current, elapsedSimSeconds, patrol, incomingFires)
+    const { activity: next, entry } = activityAfterOneTransition(
+      droneId,
+      current,
+      elapsedSimSeconds,
+      patrol,
+      incomingFires,
+      incomingClearcuts,
+    )
     if (entry) entries.push(entry)
 
     if (next !== current && next.mode !== 'patrolling' && next.mode !== 'lost' && next.mode !== 'grounded') {
@@ -701,6 +754,7 @@ function activityAfterOneTransition(
   elapsedSimSeconds: number,
   patrol: DronePatrolState,
   incomingFires: Record<string, FireRuntimeState>,
+  incomingClearcuts: Record<string, ClearcutRuntimeState>,
 ): OneTransitionResult {
   if (!incomingActivity || incomingActivity.mode === 'patrolling') {
     return { activity: { mode: 'patrolling' } }
@@ -903,6 +957,93 @@ function activityAfterOneTransition(
           severity: 'info',
           ...droneEntryFields(droneId, patrol),
           fireId: incomingActivity.assignedFireId,
+          position: orbitExitPosition,
+        },
+      }
+    }
+
+    return { activity: incomingActivity }
+  }
+
+  if (incomingActivity.mode === 'travelingToClearcut') {
+    const assignedClearcut = incomingClearcuts[incomingActivity.assignedClearcutId]
+    if (!assignedClearcut) {
+      // Defensive fallback: assigned Clearcut no longer exists (should not
+      // happen once spawned, but keep this total rather than throwing).
+      // Emits no Log Entry — it is not an operator-observable transition.
+      return { activity: { mode: 'patrolling' } }
+    }
+
+    const orbitEntryPosition = orbitPositionFor(
+      assignedClearcut.position,
+      incomingActivity.orbitRadiusMeters,
+      patrolLinearSpeedMetersPerSecond(patrol),
+      0,
+    )
+    const travelDistance = distanceMetersBetween(incomingActivity.departurePosition, orbitEntryPosition)
+    const canTravel = travelDistance > 0 && patrol.cruiseSpeedMetersPerSecond > 0
+    const travelDuration = canTravel ? travelDistance / patrol.cruiseSpeedMetersPerSecond : 0
+    const secondsSinceDeparture = elapsedSimSeconds - incomingActivity.departureSimSeconds
+    const hasArrived = secondsSinceDeparture >= travelDuration
+
+    if (!canTravel || hasArrived) {
+      // Arrived at the Clearcut's orbit entry (zero-distance/zero cruise
+      // speed, or enough travel time has elapsed): begin the orbit. Unlike
+      // a Fire dispatch there is no One-Way Mission endurance-exhaustion
+      // check here at all — a Clearcut dispatch is always the round-trip
+      // (Bingo-Range) kind (see this mode's own doc comment).
+      const arrivalSimSeconds = canTravel ? incomingActivity.departureSimSeconds + travelDuration : incomingActivity.departureSimSeconds
+      return {
+        activity: {
+          mode: 'investigatingClearcut',
+          assignedClearcutId: incomingActivity.assignedClearcutId,
+          investigationStartedAtSimSeconds: arrivalSimSeconds,
+          orbitRadiusMeters: incomingActivity.orbitRadiusMeters,
+        },
+        entry: {
+          simSeconds: arrivalSimSeconds,
+          kind: 'droneBeganClearcutOrbit',
+          severity: 'info',
+          ...droneEntryFields(droneId, patrol),
+          clearcutId: incomingActivity.assignedClearcutId,
+          position: assignedClearcut.position,
+        },
+      }
+    }
+
+    return { activity: incomingActivity }
+  }
+
+  if (incomingActivity.mode === 'investigatingClearcut') {
+    const secondsSinceOrbitStarted = elapsedSimSeconds - incomingActivity.investigationStartedAtSimSeconds
+    const lapDurationSimSeconds = orbitLapDurationSimSeconds(
+      incomingActivity.orbitRadiusMeters,
+      patrolLinearSpeedMetersPerSecond(patrol),
+    )
+    if (secondsSinceOrbitStarted >= lapDurationSimSeconds) {
+      const orbitExitPosition = orbitPositionFor(
+        incomingClearcuts[incomingActivity.assignedClearcutId]?.position ?? patrol.patrolCenter,
+        incomingActivity.orbitRadiusMeters,
+        patrolLinearSpeedMetersPerSecond(patrol),
+        lapDurationSimSeconds,
+      )
+      // Use the exact lap-completion instant so that the chained-transition
+      // loop in `activityAfterInvestigationExpiry` can correctly measure how
+      // far into the return trip we are on the same tick (mirrors
+      // 'investigatingFire's own comment above).
+      const returnStartedAtSimSeconds = incomingActivity.investigationStartedAtSimSeconds + lapDurationSimSeconds
+      return {
+        activity: {
+          mode: 'returningToBase',
+          departurePosition: orbitExitPosition,
+          returnStartedAtSimSeconds,
+        },
+        entry: {
+          simSeconds: returnStartedAtSimSeconds,
+          kind: 'droneReturningAfterClearcutOrbit',
+          severity: 'info',
+          ...droneEntryFields(droneId, patrol),
+          clearcutId: incomingActivity.assignedClearcutId,
           position: orbitExitPosition,
         },
       }
@@ -1115,6 +1256,7 @@ function positionForActivity(
   elapsedSimSeconds: number,
   incomingEvents: Record<string, EventRuntimeState>,
   incomingFires: Record<string, FireRuntimeState>,
+  incomingClearcuts: Record<string, ClearcutRuntimeState>,
 ): LatLng {
   if (activity.mode === 'investigating') {
     const assignedEvent = incomingEvents[activity.assignedEventId]
@@ -1145,6 +1287,31 @@ function positionForActivity(
     if (assignedFire) {
       return orbitPositionFor(
         assignedFire.position,
+        activity.orbitRadiusMeters,
+        patrolLinearSpeedMetersPerSecond(patrol),
+        elapsedSimSeconds - activity.investigationStartedAtSimSeconds,
+      )
+    }
+  }
+
+  if (activity.mode === 'travelingToClearcut') {
+    const assignedClearcut = incomingClearcuts[activity.assignedClearcutId]
+    const orbitEntryPosition = assignedClearcut
+      ? orbitPositionFor(assignedClearcut.position, activity.orbitRadiusMeters, patrolLinearSpeedMetersPerSecond(patrol), 0)
+      : activity.departurePosition
+    const travelDistance = distanceMetersBetween(activity.departurePosition, orbitEntryPosition)
+    if (travelDistance <= 0 || patrol.cruiseSpeedMetersPerSecond <= 0) return orbitEntryPosition
+    const travelDuration = travelDistance / patrol.cruiseSpeedMetersPerSecond
+    const secondsSinceDeparture = elapsedSimSeconds - activity.departureSimSeconds
+    const progress = Math.min(1, secondsSinceDeparture / travelDuration)
+    return interpolateLatLng(activity.departurePosition, orbitEntryPosition, progress)
+  }
+
+  if (activity.mode === 'investigatingClearcut') {
+    const assignedClearcut = incomingClearcuts[activity.assignedClearcutId]
+    if (assignedClearcut) {
+      return orbitPositionFor(
+        assignedClearcut.position,
         activity.orbitRadiusMeters,
         patrolLinearSpeedMetersPerSecond(patrol),
         elapsedSimSeconds - activity.investigationStartedAtSimSeconds,
@@ -1255,6 +1422,7 @@ function deriveDronesEventsAndFires(
       elapsedSimSeconds,
       patrol,
       incomingFires,
+      incomingClearcuts,
     )
     droneActivity[droneId] = activity
     for (const entry of entries) logDrafts.push(entry)
@@ -1264,13 +1432,20 @@ function deriveDronesEventsAndFires(
   for (const [droneId, patrol] of Object.entries(dronePatrolParams)) {
     dronePatrol[droneId] = {
       ...patrol,
-      position: positionForActivity(patrol, droneActivity[droneId], elapsedSimSeconds, incomingEvents, incomingFires),
+      position: positionForActivity(
+        patrol,
+        droneActivity[droneId],
+        elapsedSimSeconds,
+        incomingEvents,
+        incomingFires,
+        incomingClearcuts,
+      ),
     }
   }
 
   const events = eventsAt(scenarioEvents, elapsedSimSeconds, incomingEvents, dronePatrol)
   const fires = firesAt(scenarioFireIgnitions, elapsedSimSeconds, incomingFires, dronePatrol, towerDetection, droneActivity, wind)
-  const clearcuts = clearcutsAt(scenarioClearcuts, elapsedSimSeconds, incomingClearcuts, dronePatrol)
+  const clearcuts = clearcutsAt(scenarioClearcuts, elapsedSimSeconds, incomingClearcuts, dronePatrol, droneActivity)
 
   // Detection Log Entries (fog-of-war, ADR-0008): an Event/Fire that has just
   // left `'undetected'` this call — i.e. it now carries a
@@ -1619,13 +1794,79 @@ export function withManualFireDispatch(
 }
 
 /**
+ * The Clearcut-dispatch sibling of {@link withManualFireDispatch} (issue
+ * Y): applies an explicit user "send this Drone to this Clearcut" action,
+ * immediately, the same "takes effect right away" way as every other
+ * manual-dispatch entry point in this engine. Unlike Fire dispatch there is
+ * only ever one mission kind here — `ClearcutPanel` offers a single
+ * Bingo-Range-only dispatch list, no One-Way Mission option at all (a
+ * static, non-urgent target never justifies sacrificing a Drone) — so
+ * `droneId` always switches to `'travelingToClearcut'` starting now,
+ * carrying the Clearcut's own static {@link clearcutOrbitRadiusMeters} as
+ * `orbitRadiusMeters` (fixed for the whole investigation, unlike a Fire's
+ * ever-growing orbit radius, because a Clearcut Footprint never changes).
+ * The Clearcut's tier flips to `'investigated'` only once the Drone
+ * actually begins orbiting (`clearcutWithInvestigationApplied` via
+ * `isAnyDroneOrbitingClearcut`), one tick later than this call, not here —
+ * mirroring `withManualDispatch`'s Event-detection timing, not
+ * `withManualFireDispatch`'s immediate-orbit convention (a Clearcut is
+ * always already fully `'detected'` before `ClearcutPanel` can dispatch to
+ * it at all, so there is no "reveal it in the same click" urgency Fire's
+ * immediate ratchet exists for). A no-op (returns `state` unchanged, same
+ * object identity) if `droneId` isn't currently `'patrolling'` or
+ * `clearcutId` isn't a currently-`'detected'` Clearcut — `ClearcutPanel`
+ * only ever offers "Send" for an eligible combination, but this stays
+ * defensive/total rather than throwing on a stale click.
+ */
+export function withManualClearcutDispatch(state: SimulationState, droneId: string, clearcutId: string): SimulationState {
+  const patrol = state.dronePatrol[droneId]
+  const activity = state.droneActivity[droneId]
+  const clearcut = state.clearcuts[clearcutId]
+
+  if (!patrol || activity?.mode !== 'patrolling' || !clearcut || clearcut.tier !== 'detected') {
+    return state
+  }
+
+  const departureSimSeconds = state.elapsedSimSeconds
+  const orbitRadiusMeters = clearcutOrbitRadiusMeters(clearcut)
+
+  const entry: LogEntryDraft = {
+    simSeconds: state.elapsedSimSeconds,
+    kind: 'droneDispatchedToClearcut',
+    severity: 'info',
+    droneId,
+    droneType: patrol.droneType,
+    clearcutId,
+    position: clearcut.position,
+  }
+
+  return {
+    ...state,
+    droneActivity: {
+      ...state.droneActivity,
+      [droneId]: {
+        mode: 'travelingToClearcut',
+        assignedClearcutId: clearcutId,
+        departurePosition: patrol.position,
+        departureSimSeconds,
+        orbitRadiusMeters,
+      },
+    },
+    log: logWithDraftsAppended(state.log, [entry]),
+  }
+}
+
+/**
  * Whether a Drone in `activity` is eligible for a manual "Return to Nearest
  * Base" recall (ADR-0007): any *active* Drone — `'patrolling'`,
- * `'investigating'` an Event, or on a *round-trip* Fire mission
+ * `'investigating'` an Event, on a *round-trip* Fire mission
  * (`'travelingToFire'`/`'investigatingFire'` with `missionKind ===
- * 'roundTrip'`) — may be recalled, abandoning whatever it was doing. A
- * `'oneWay'` Fire mission is deliberately excluded (it is intentionally
- * sacrificial — see `FireMissionKind`), as are Drones already heading home
+ * 'roundTrip'`), or on a Clearcut mission
+ * (`'travelingToClearcut'`/`'investigatingClearcut'` — issue Y, always
+ * round-trip, there is no `'oneWay'` Clearcut mission kind at all) — may be
+ * recalled, abandoning whatever it was doing. A `'oneWay'` Fire mission is
+ * deliberately excluded (it is intentionally sacrificial — see
+ * `FireMissionKind`), as are Drones already heading home
  * (`'returningToBase'`/`'returningToStation'`) or in a terminal state
  * (`'grounded'`/`'lost'`). A missing entry defaults to eligible, mirroring
  * the engine's "missing means patrolling" fallback elsewhere. Exported so
@@ -1633,7 +1874,13 @@ export function withManualFireDispatch(
  * panel's button visibility read the exact same rule.
  */
 export function canReturnDroneToBase(activity: DroneActivityState | undefined): boolean {
-  if (!activity || activity.mode === 'patrolling' || activity.mode === 'investigating') {
+  if (
+    !activity ||
+    activity.mode === 'patrolling' ||
+    activity.mode === 'investigating' ||
+    activity.mode === 'travelingToClearcut' ||
+    activity.mode === 'investigatingClearcut'
+  ) {
     return true
   }
   if (activity.mode === 'travelingToFire' || activity.mode === 'investigatingFire') {

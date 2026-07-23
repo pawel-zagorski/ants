@@ -90,3 +90,24 @@ export function classifyFireDispatch(
   if (flightBudgetMeters >= distanceToFireMeters) return 'oneWayMission'
   return 'unreachable'
 }
+
+/**
+ * The Clearcut sibling of {@link classifyFireDispatch} (issue Y): reuses
+ * the exact same distance/speed math — a Clearcut position stands in for
+ * `firePosition`, and the caller supplies its own (static, wind/time-free)
+ * orbit radius (`clearcutFootprint.ts`'s `clearcutOrbitRadiusMeters`)
+ * instead of a Fire's live one — but collapses the three-way
+ * `FireDispatchClassification` down to a single boolean gate: `true` only
+ * for `'bingoRange'`. `CONTEXT.md`/this issue's spec: a Clearcut is a
+ * static, non-urgent target that never justifies a One-Way Mission, so
+ * `ClearcutPanel` needs no second list and no `'oneWayMission'`/
+ * `'unreachable'` distinction at all — both simply mean "not listed" here.
+ */
+export function isClearcutBingoRangeEligible(
+  candidate: FireDispatchCandidate,
+  clearcutPosition: LatLng,
+  baseStations: readonly BaseStation[],
+  orbitRadiusMeters: number,
+): boolean {
+  return classifyFireDispatch(candidate, clearcutPosition, baseStations, orbitRadiusMeters) === 'bingoRange'
+}

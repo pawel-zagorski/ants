@@ -600,6 +600,56 @@ body,
   font-size: 13px;
 }
 
+/* ClearcutPanel (issue Y) — the same "Send" list look as FirePanel's above,
+   but rendered once (Bingo Range only — no One-Way Mission section at all
+   for a static, non-urgent Clearcut). Kept as its own `.clearcut-panel-*`
+   class family rather than reusing `.fire-panel-*`, same "each panel owns
+   its own tiny styling" precedent noted above, even though the rules are
+   currently identical. */
+.clearcut-panel-drones {
+  margin-top: 12px;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 8px;
+}
+
+.clearcut-panel-drones-title {
+  margin: 0 0 6px 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  color: #6b7280;
+}
+
+.clearcut-panel-no-drones {
+  margin: 0;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.clearcut-panel-drone-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.clearcut-panel-drone-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 14px;
+}
+
+.clearcut-panel-drone-row button {
+  cursor: pointer;
+  border: 1px solid #1d4ed8;
+  border-radius: 4px;
+  background: #1d4ed8;
+  color: #ffffff;
+  padding: 2px 10px;
+  font-size: 13px;
+}
+
 /* Ground Truth View toggle (issue D) — sits alongside the Simulation Clock panel. */
 .ground-truth-toggle {
   display: flex;

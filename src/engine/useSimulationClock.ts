@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   advanceSimulation,
   initializeSimulationState,
+  withManualClearcutDispatch,
   withManualDispatch,
   withManualFireDispatch,
   withManualReturnToBase,
@@ -45,6 +46,17 @@ export interface SimulationClock {
    * comment). Called by `FirePanel`'s "Send" buttons via `RokuaMap`.
    */
   sendDroneToFire: (droneId: string, fireId: string, missionKind: FireMissionKind) => void
+  /**
+   * Issue Y's Clearcut-dispatch sibling of `sendDroneToFire`: sends
+   * `droneId` to investigate `clearcutId` right now, regardless of
+   * play/pause state (same immediate-effect rationale as `sendDrone`/
+   * `sendDroneToFire` — see `withManualClearcutDispatch`'s doc comment).
+   * Unlike `sendDroneToFire` there is no `missionKind` to carry — a
+   * Clearcut dispatch is always the single round-trip Bingo Range kind, per
+   * `ClearcutPanel`'s single "Send" list. Called by `ClearcutPanel`'s
+   * "Send" button via `RokuaMap`.
+   */
+  sendDroneToClearcut: (droneId: string, clearcutId: string) => void
   /**
    * ADR-0007's manual "Return to Nearest Base" recall: sends `droneId` home
    * to its nearest `World.baseStations` entry (by straight-line distance from
@@ -126,6 +138,11 @@ export function useSimulationClock(world: World, scenario: Scenario): Simulation
       setSimulationState((previous) => withManualFireDispatch(previous, droneId, fireId, missionKind)),
     [],
   )
+  const sendDroneToClearcut = useCallback(
+    (droneId: string, clearcutId: string) =>
+      setSimulationState((previous) => withManualClearcutDispatch(previous, droneId, clearcutId)),
+    [],
+  )
   const returnDroneToNearestBase = useCallback(
     (droneId: string) =>
       setSimulationState((previous) => {
@@ -148,6 +165,7 @@ export function useSimulationClock(world: World, scenario: Scenario): Simulation
     step,
     sendDrone,
     sendDroneToFire,
+    sendDroneToClearcut,
     returnDroneToNearestBase,
   }
 }

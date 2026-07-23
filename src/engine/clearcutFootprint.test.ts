@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { clearcutFootprintHexCells } from './clearcutFootprint'
+import { clearcutFootprintHexCells, clearcutOrbitRadiusMeters } from './clearcutFootprint'
 import { hexCentroidOffsetMeters } from './growthEllipse'
 import type { HexCoordinate } from './growthEllipse'
 
@@ -70,5 +70,30 @@ describe('clearcutFootprintHexCells', () => {
     expect(clearcutFootprintHexCells({ semiMajorAxisMeters: 0, semiMinorAxisMeters: 0, orientationDegrees: 0 })).toEqual([
       { q: 0, r: 0 },
     ])
+  })
+})
+
+describe('clearcutOrbitRadiusMeters', () => {
+  it('equals the semi-major axis when it is the longer of the two axes (the ellipse is centered exactly on the centroid, so its furthest reach is the major axis length)', () => {
+    expect(clearcutOrbitRadiusMeters(ELONGATED)).toBe(ELONGATED.semiMajorAxisMeters)
+  })
+
+  it('equals the semi-minor axis when it is (unusually) the longer of the two — always the larger of the two half-axes', () => {
+    const spec = { semiMajorAxisMeters: 100, semiMinorAxisMeters: 400, orientationDegrees: 0 }
+    expect(clearcutOrbitRadiusMeters(spec)).toBe(400)
+  })
+
+  it('is orientation-independent (rotating the footprint does not change its bounding-circle radius)', () => {
+    const radiusAt0 = clearcutOrbitRadiusMeters(ELONGATED)
+    const radiusAt90 = clearcutOrbitRadiusMeters({ ...ELONGATED, orientationDegrees: 90 })
+    expect(radiusAt90).toBe(radiusAt0)
+  })
+
+  it('is exactly zero for a degenerate (zero-size) spec, not a negative or NaN value', () => {
+    expect(clearcutOrbitRadiusMeters({ semiMajorAxisMeters: 0, semiMinorAxisMeters: 0, orientationDegrees: 0 })).toBe(0)
+  })
+
+  it('is a pure, deterministic function of its input', () => {
+    expect(clearcutOrbitRadiusMeters(ELONGATED)).toBe(clearcutOrbitRadiusMeters(ELONGATED))
   })
 })
