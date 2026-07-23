@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { advanceSimulation, initializeSimulationState } from '../engine/advanceSimulation'
+import { advanceSimulation, initializeSimulationState, withManualClearcutDispatch } from '../engine/advanceSimulation'
+import { isClearcutBingoRangeEligible } from '../engine/bingoRange'
+import { clearcutOrbitRadiusMeters } from '../engine/clearcutFootprint'
 import { INVESTIGATION_DURATION_SIM_SECONDS } from '../engine/dispatch'
+import { droneTelemetryFor } from '../engine/telemetry'
 import type { SimulationState } from '../engine/types'
 import { parseWorld } from '../world/schema'
 import { parseScenario } from './schema'
@@ -221,6 +224,180 @@ describe('"Illegal Deforestation" — a default-patrol Drone spots the Clearcut 
     const runB = firstDetectedTick()
     expect(runA).toBeDefined()
     expect(runA).toBe(runB)
+  })
+})
+
+describe('"Illegal Deforestation" — the tuned scenario (issue BB): estimate-only patrol Detection within 5 minutes, then a manual Bingo-Range investigation reveals 3 clustered Person Sightings', () => {
+  const scenario = parseScenario(illegalDeforestationJson)
+  const world = parseWorld(worldJson)
+  const clearcutId = 'illegal-deforestation-clearcut-1'
+  const sightingIds = [
+    'illegal-deforestation-sighting-1',
+    'illegal-deforestation-sighting-2',
+    'illegal-deforestation-sighting-3',
+  ]
+
+  /**
+   * Runs `scenario` from scratch, letting a Fixed-Wing Drone's ordinary
+   * patrol pass Detect the Clearcut, then — the instant it does — manually
+   * Bingo-Range-dispatches that same detecting Drone to investigate it
+   * (mirroring the `ClearcutPanel`'s single Bingo-Range "Send" list) and
+   * continues ticking through a full orbit lap and well beyond. Returns the
+   * full detection timeline plus the final state, so a single deterministic
+   * run can be asserted on from multiple angles and also compared,
+   * wholesale, against a second independent run (determinism).
+   */
+  function runDetectDispatchAndInvestigate(scenarioInstance: Scenario): {
+    finalState: SimulationState
+    clearcutDetectedAtSimSeconds: number
+    detectingDroneId: string
+    bingoRangeEligibleAtDetection: boolean
+    clearcutInvestigatedAtSimSeconds: number
+    sightingDetectedAtSimSeconds: Record<string, number | undefined>
+  } {
+    let clearcutDetectedAtSimSeconds: number | undefined
+    let stateAtDetection: SimulationState | undefined
+
+    runScenario(scenarioInstance, 300, (s) => {
+      if (clearcutDetectedAtSimSeconds === undefined && s.clearcuts[clearcutId]?.tier === 'detected') {
+        clearcutDetectedAtSimSeconds = s.elapsedSimSeconds
+        stateAtDetection = s
+      }
+    })
+    if (clearcutDetectedAtSimSeconds === undefined || !stateAtDetection) {
+      throw new Error('Clearcut was never Detected within 300 simulated seconds')
+    }
+
+    const detectingDroneId = stateAtDetection.clearcuts[clearcutId].detectedByAssetId
+    if (!detectingDroneId) throw new Error('Detected Clearcut has no detectedByAssetId')
+
+    const patrol = stateAtDetection.dronePatrol[detectingDroneId]
+    const activity = stateAtDetection.droneActivity[detectingDroneId]
+    const droneSpec = world.drones.find((d) => d.id === detectingDroneId)
+    if (!droneSpec) throw new Error(`Unknown Drone "${detectingDroneId}"`)
+
+    const telemetry = droneTelemetryFor(patrol, activity, stateAtDetection.elapsedSimSeconds, droneSpec.maxEnduranceSimSeconds)
+    const orbitRadiusMeters = clearcutOrbitRadiusMeters(stateAtDetection.clearcuts[clearcutId])
+    const bingoRangeEligibleAtDetection = isClearcutBingoRangeEligible(
+      {
+        id: detectingDroneId,
+        position: patrol.position,
+        remainingEnduranceSimSeconds: telemetry.remainingEnduranceSimSeconds,
+        cruiseSpeedMetersPerSecond: droneSpec.cruiseSpeedMetersPerSecond,
+      },
+      stateAtDetection.clearcuts[clearcutId].position,
+      world.baseStations,
+      orbitRadiusMeters,
+    )
+
+    const dispatched = withManualClearcutDispatch(stateAtDetection, detectingDroneId, clearcutId)
+
+    let state = dispatched
+    let clearcutInvestigatedAtSimSeconds: number | undefined
+    const sightingDetectedAtSimSeconds: Record<string, number | undefined> = {}
+    // One full orbit lap at this Drone's patrol linear speed comfortably
+    // completes in well under 400s for every Fixed-Wing Drone in the
+    // default world.json — see the exact figures in this describe block's
+    // own timing-report test below.
+    for (let t = clearcutDetectedAtSimSeconds + 1; t <= clearcutDetectedAtSimSeconds + 400; t += 1) {
+      state = advanceSimulation(state, t)
+      if (clearcutInvestigatedAtSimSeconds === undefined && state.clearcuts[clearcutId].tier === 'investigated') {
+        clearcutInvestigatedAtSimSeconds = t
+      }
+      for (const sightingId of sightingIds) {
+        if (sightingDetectedAtSimSeconds[sightingId] === undefined && state.events[sightingId]?.status !== 'undetected') {
+          sightingDetectedAtSimSeconds[sightingId] = t
+        }
+      }
+    }
+    if (clearcutInvestigatedAtSimSeconds === undefined) {
+      throw new Error('Clearcut never became investigated within 400s of manual dispatch')
+    }
+
+    return {
+      finalState: state,
+      clearcutDetectedAtSimSeconds,
+      detectingDroneId,
+      bingoRangeEligibleAtDetection,
+      clearcutInvestigatedAtSimSeconds,
+      sightingDetectedAtSimSeconds,
+    }
+  }
+
+  it('(a) a Fixed-Wing Drone (drone-2) Detects the Clearcut, as a rough estimate, within the first 300 simulated seconds (5 minutes)', () => {
+    const result = runDetectDispatchAndInvestigate(scenario)
+    expect(result.detectingDroneId).toBe('drone-2')
+    expect(result.clearcutDetectedAtSimSeconds).toBeLessThanOrEqual(300)
+    // Sanity-check the authored placement: closest approach to drone-2's
+    // Patrol Route is within the issue's 1000-1400m band, verified directly
+    // against the recorded Detection distance ceiling (Drones only ever
+    // Detect at <= their own detectionRadiusMeters, 1500m for a Fixed-Wing
+    // Drone — see world.json).
+    expect(result.finalState.clearcuts[clearcutId].detectedFromDistanceMeters).toBeLessThanOrEqual(1500)
+  })
+
+  it('(b) the automatic patrol Detection is estimate-only — the Clearcut never auto-investigates on its own (stays "detected" for the whole 300s window and well beyond)', () => {
+    let everAutoInvestigated = false
+    runScenario(scenario, 1000, (s) => {
+      if (s.clearcuts[clearcutId]?.tier === 'investigated') everAutoInvestigated = true
+    })
+    expect(everAutoInvestigated).toBe(false)
+  })
+
+  it('(c) all 3 clustered Person Sightings stay "undetected" through pure patrol (no manual dispatch at all) for well over 300 simulated seconds', () => {
+    const state = runScenario(scenario, 1000)
+    for (const sightingId of sightingIds) {
+      expect(state.events[sightingId].status).toBe('undetected')
+    }
+  })
+
+  it('(d) a manual Bingo-Range dispatch of the detecting Drone, run through one full orbit lap, investigates the Clearcut and reveals all 3 Person Sightings', () => {
+    const result = runDetectDispatchAndInvestigate(scenario)
+
+    expect(result.bingoRangeEligibleAtDetection).toBe(true)
+    expect(result.finalState.clearcuts[clearcutId].tier).toBe('investigated')
+
+    for (const sightingId of sightingIds) {
+      expect(result.finalState.events[sightingId].status).toBe('detected')
+      expect(result.sightingDetectedAtSimSeconds[sightingId]).toBeDefined()
+      // Every reveal happens as a direct consequence of the dispatched
+      // Drone's flight toward/orbit of the Clearcut — never before the
+      // operator actually sent it (issue Z's "discovered-on-site" payoff,
+      // or this same Drone's own detection radius sweeping over the
+      // sighting during that same investigation flight).
+      expect(result.sightingDetectedAtSimSeconds[sightingId]!).toBeGreaterThan(result.clearcutDetectedAtSimSeconds)
+    }
+  })
+
+  it('(e) is fully deterministic: an independent second run produces an identical Detection timeline (Clearcut Detected/Investigated ticks and every Person Sighting Detection tick)', () => {
+    const runA = runDetectDispatchAndInvestigate(parseScenario(illegalDeforestationJson))
+    const runB = runDetectDispatchAndInvestigate(parseScenario(illegalDeforestationJson))
+
+    expect(runB.clearcutDetectedAtSimSeconds).toBe(runA.clearcutDetectedAtSimSeconds)
+    expect(runB.detectingDroneId).toBe(runA.detectingDroneId)
+    expect(runB.clearcutInvestigatedAtSimSeconds).toBe(runA.clearcutInvestigatedAtSimSeconds)
+    expect(runB.sightingDetectedAtSimSeconds).toEqual(runA.sightingDetectedAtSimSeconds)
+  })
+
+  it('reports the exact tuned timings this scenario relies on (a stable regression pin, not just a range check)', () => {
+    const result = runDetectDispatchAndInvestigate(scenario)
+
+    expect(result.clearcutDetectedAtSimSeconds).toBe(174)
+    expect(result.clearcutInvestigatedAtSimSeconds).toBe(242)
+    expect(result.sightingDetectedAtSimSeconds).toEqual({
+      'illegal-deforestation-sighting-1': 188,
+      'illegal-deforestation-sighting-2': 191,
+      'illegal-deforestation-sighting-3': 193,
+    })
+
+    // Confirms the one-full-orbit-lap Bingo-Range completion actually
+    // happened (rather than, say, the Drone getting stuck orbiting forever):
+    // by 400s past Detection, drone-2 has completed its lap and returned to
+    // its own normal Patrol Route, per `orbitLapDurationSimSeconds`'s
+    // circumference/speed math on this Clearcut's own static orbit radius.
+    const orbitRadiusMeters = clearcutOrbitRadiusMeters(result.finalState.clearcuts[clearcutId])
+    expect(orbitRadiusMeters).toBe(350)
+    expect(result.finalState.droneActivity['drone-2']).toEqual({ mode: 'patrolling' })
   })
 })
 
