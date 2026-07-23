@@ -82,6 +82,8 @@ export interface DroneTelemetry {
   assignedEventId?: string
   assignedFireId?: string
   missionKind?: FireMissionKind
+  /** The Clearcut this Drone is traveling to/orbiting (issue Y) — the Clearcut sibling of `assignedFireId`, set only while `state === 'investigating'` and the underlying mode is `'travelingToClearcut'`/`'investigatingClearcut'`. */
+  assignedClearcutId?: string
 }
 
 /**
@@ -189,6 +191,36 @@ export function droneTelemetryFor(
       ...(motion.headingDegrees !== undefined ? { headingDegrees: motion.headingDegrees } : {}),
       assignedFireId: activity.assignedFireId,
       missionKind: activity.missionKind,
+    }
+  }
+
+  if (activity.mode === 'travelingToClearcut') {
+    return {
+      state: 'investigating',
+      position: patrol.position,
+      batteryPercent,
+      remainingEnduranceSimSeconds,
+      speedMetersPerSecond: patrol.cruiseSpeedMetersPerSecond,
+      assignedClearcutId: activity.assignedClearcutId,
+    }
+  }
+
+  if (activity.mode === 'investigatingClearcut') {
+    const secondsSinceOrbitStarted = elapsedSimSeconds - activity.investigationStartedAtSimSeconds
+    const patrolLinearSpeedMetersPerSecond = tangentialSpeedMetersPerSecond(
+      patrol.angularSpeedRadiansPerSecond,
+      patrol.patrolRadiusMeters,
+    )
+    const motion = orbitMotionFor(activity.orbitRadiusMeters, patrolLinearSpeedMetersPerSecond, secondsSinceOrbitStarted)
+
+    return {
+      state: 'investigating',
+      position: patrol.position,
+      batteryPercent,
+      remainingEnduranceSimSeconds,
+      speedMetersPerSecond: motion.speedMetersPerSecond,
+      ...(motion.headingDegrees !== undefined ? { headingDegrees: motion.headingDegrees } : {}),
+      assignedClearcutId: activity.assignedClearcutId,
     }
   }
 

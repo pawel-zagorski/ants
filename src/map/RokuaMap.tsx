@@ -4,6 +4,7 @@ import 'leaflet/dist/leaflet.css'
 import { toLeafletBounds } from './geo'
 import { AssetMarkers } from './AssetMarkers'
 import { AssetPanel } from './AssetPanel'
+import { ClearcutConfirmedShapeLayer } from './ClearcutConfirmedShapeLayer'
 import { ClearcutEstimateLayer } from './ClearcutEstimateLayer'
 import { ClearcutFootprintLayer } from './ClearcutFootprintLayer'
 import { ClearcutMarkers } from './ClearcutMarkers'
@@ -238,6 +239,10 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
         clearcuts={clock.simulationState.clearcuts}
         groundTruthViewEnabled={groundTruthViewEnabled}
       />
+      <ClearcutConfirmedShapeLayer
+        clearcuts={clock.simulationState.clearcuts}
+        groundTruthViewEnabled={groundTruthViewEnabled}
+      />
       {selectedAsset && isDroneAsset(selectedAsset) && selectedDroneRemainingEnduranceSimSeconds !== undefined && (
         <ReturnEnvelope
           drone={selectedAsset}
@@ -282,6 +287,10 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
         <ClearcutPanel
           clearcut={selectedClearcut}
           startDateTimeIso={scenario.startDateTimeIso}
+          simulationState={clock.simulationState}
+          drones={world.drones}
+          baseStations={liveWorld.baseStations}
+          onSend={(droneId) => clock.sendDroneToClearcut(droneId, selectedClearcut.id)}
           onClose={() => setSelectedClearcutId(null)}
         />
       )}

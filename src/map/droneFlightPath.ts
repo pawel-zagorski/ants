@@ -11,15 +11,18 @@ import type { SimulationState } from '../engine/types'
  *   its live `from` position to its `to` destination. Applies to every
  *   "going somewhere" mode: `'investigating'` (to the assigned Event),
  *   `'travelingToFire'` (to the fire's orbit-entry point),
- *   `'returningToBase'` (to its `patrolCenter` — its home Base Station's
- *   position, which the engine flies it back to; see `advanceSimulation`),
- *   and `'returningToStation'` (to its nearest Base Station's
- *   `targetPosition` on a manual recall — ADR-0007).
+ *   `'travelingToClearcut'` (to the Clearcut's orbit-entry point — issue Y,
+ *   same geometry as `'travelingToFire'`), `'returningToBase'` (to its
+ *   `patrolCenter` — its home Base Station's position, which the engine
+ *   flies it back to; see `advanceSimulation`), and `'returningToStation'`
+ *   (to its nearest Base Station's `targetPosition` on a manual recall —
+ *   ADR-0007).
  * - `'orbit'` — the actual circle a Drone is flying around while
- *   `'investigatingFire'`: centered on the Fire's ignition point, at the
- *   real `radiusMeters` snapshotted into the activity at dispatch time (the
- *   same `orbitRadiusMeters` `engine/orbit.ts` uses to place the Drone), so
- *   the drawn circle traces exactly the path the Drone follows.
+ *   `'investigatingFire'` or `'investigatingClearcut'` (issue Y): centered
+ *   on the Fire/Clearcut's own position, at the real `radiusMeters`
+ *   snapshotted into the activity at dispatch time (the same
+ *   `orbitRadiusMeters` `engine/orbit.ts` uses to place the Drone), so the
+ *   drawn circle traces exactly the path the Drone follows.
  *
  * - `'route'` — the closed waypoint loop of a Drone's world-authored Patrol
  *   Route (issue AA), drawn while it is `'patrolling'` that route instead of
@@ -73,6 +76,20 @@ export function droneFlightPathFor(droneId: string, state: SimulationState): Dro
       const fire = state.fires[activity.assignedFireId]
       if (!fire) return null
       return { kind: 'orbit', center: fire.position, radiusMeters: activity.orbitRadiusMeters }
+    }
+    case 'travelingToClearcut': {
+      const clearcut = state.clearcuts[activity.assignedClearcutId]
+      if (!clearcut) return null
+      return {
+        kind: 'trajectory',
+        from: patrol.position,
+        to: pointOnCircle(clearcut.position, activity.orbitRadiusMeters, 0),
+      }
+    }
+    case 'investigatingClearcut': {
+      const clearcut = state.clearcuts[activity.assignedClearcutId]
+      if (!clearcut) return null
+      return { kind: 'orbit', center: clearcut.position, radiusMeters: activity.orbitRadiusMeters }
     }
     case 'returningToBase':
       return { kind: 'trajectory', from: patrol.position, to: patrol.patrolCenter }

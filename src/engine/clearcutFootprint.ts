@@ -50,6 +50,24 @@ function isInsideClearcutEllipse(eastMeters: number, northMeters: number, spec: 
 }
 
 /**
+ * The radius (meters) of the smallest circle, centered on the Clearcut's
+ * own centroid, that's guaranteed to fully enclose its (fixed, oriented)
+ * Clearcut Footprint ellipse — issue Y's "orbit the footprint's extent,
+ * radius scaled to the footprint bounding size", the Clearcut sibling of
+ * `growthEllipse.ts`'s `fireOrbitRadiusMetersAt`. Unlike a Fire's Growth
+ * Ellipse (whose center drifts downwind away from the ignition point a
+ * Drone actually orbits around), a Clearcut Footprint ellipse is centered
+ * exactly on the centroid a Drone orbits, with no wind/time drift — so its
+ * furthest reach from that center is simply the longer of its two
+ * half-axes, with no separate offset term to add. Orientation-independent
+ * (rotating the ellipse doesn't change its bounding-circle radius) and
+ * exactly `0` for a degenerate zero-size spec, never negative.
+ */
+export function clearcutOrbitRadiusMeters(spec: ClearcutFootprintSpec): number {
+  return Math.max(spec.semiMajorAxisMeters, spec.semiMinorAxisMeters)
+}
+
+/**
  * The Clearcut Footprint (`CONTEXT.md`): every hex cell, in the Clearcut's
  * local axial grid centered on its centroid, whose centroid falls inside
  * the static oriented ellipse described by `spec`. Pure and total: the same

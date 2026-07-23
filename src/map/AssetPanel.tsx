@@ -88,7 +88,10 @@ function assetPhotoFor(asset: Asset, isDrone: boolean): { src: string; alt: stri
  * set and `assignedEventId` undefined, and vice versa — see
  * `DroneTelemetry`'s doc comment); "Assigned Fire" additionally shows the
  * `missionKind` ("Round Trip"/"One-Way") inline so this panel answers "is
- * this Drone expected back?" at a glance. Callers
+ * this Drone expected back?" at a glance. "Assigned Clearcut" (issue Y) is
+ * the Clearcut sibling shown instead, with no mission-kind suffix at all —
+ * a Clearcut dispatch is always round-trip, so there is nothing else to
+ * show. Callers
  * are responsible for passing a fresh `simulationState` on every render
  * (see `RokuaMap`) — that's what makes the Drone/Base Station fields
  * "live-update while the clock runs" rather than freezing at whatever they
@@ -169,6 +172,12 @@ export function AssetPanel({
                 <dd>
                   {droneTelemetry.assignedFireId} ({fireMissionKindLabel(droneTelemetry.missionKind)})
                 </dd>
+              </>
+            )}
+            {droneTelemetry.assignedClearcutId !== undefined && (
+              <>
+                <dt>Assigned Clearcut</dt>
+                <dd>{droneTelemetry.assignedClearcutId}</dd>
               </>
             )}
             <dt>Flight Endurance Remaining</dt>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { classifyFireDispatch } from './bingoRange'
+import { classifyFireDispatch, isClearcutBingoRangeEligible } from './bingoRange'
 import type { LatLng } from '../map/geo'
 import type { BaseStation } from '../world/types'
 
@@ -121,5 +121,64 @@ describe('classifyFireDispatch', () => {
 
     expect(withSmallOrbit).toBe('bingoRange')
     expect(withHugeOrbit).not.toBe('bingoRange')
+  })
+})
+
+describe('isClearcutBingoRangeEligible (issue Y: Bingo Range only, no One-Way Mission for a Clearcut)', () => {
+  const clearcutPosition: LatLng = { lat: 64.5, lng: 26.25 }
+
+  it('is true for a Drone comfortably within round-trip range (clearly safe)', () => {
+    const dronePosition: LatLng = clearcutPosition
+    const distanceBackMeters = 111
+    const roundTripMeters = orbitLapMeters + distanceBackMeters
+    const cruiseSpeedMetersPerSecond = 20
+    const remainingEnduranceSimSeconds = (roundTripMeters / cruiseSpeedMetersPerSecond) * 2
+
+    const eligible = isClearcutBingoRangeEligible(
+      { id: 'drone-1', position: dronePosition, remainingEnduranceSimSeconds, cruiseSpeedMetersPerSecond },
+      clearcutPosition,
+      baseStations,
+      TEST_ORBIT_RADIUS_METERS,
+    )
+
+    expect(eligible).toBe(true)
+  })
+
+  it('is false for a Drone that could only make a one-way trip (not enough for the round trip)', () => {
+    const dronePosition: LatLng = { lat: 64.5, lng: 26.3 }
+    const cruiseSpeedMetersPerSecond = 10
+    const remainingEnduranceSimSeconds = 300
+
+    const eligible = isClearcutBingoRangeEligible(
+      { id: 'drone-2', position: dronePosition, remainingEnduranceSimSeconds, cruiseSpeedMetersPerSecond },
+      clearcutPosition,
+      baseStations,
+      TEST_ORBIT_RADIUS_METERS,
+    )
+
+    expect(eligible).toBe(false)
+  })
+
+  it('is false for a Drone that cannot even reach the Clearcut one-way (clearly unreachable)', () => {
+    const dronePosition: LatLng = { lat: 64.5, lng: 27.5 }
+    const cruiseSpeedMetersPerSecond = 10
+    const remainingEnduranceSimSeconds = 10
+
+    const eligible = isClearcutBingoRangeEligible(
+      { id: 'drone-3', position: dronePosition, remainingEnduranceSimSeconds, cruiseSpeedMetersPerSecond },
+      clearcutPosition,
+      baseStations,
+      TEST_ORBIT_RADIUS_METERS,
+    )
+
+    expect(eligible).toBe(false)
+  })
+
+  it('is a pure, deterministic function of its inputs', () => {
+    const candidate = { id: 'drone-4', position: { lat: 64.51, lng: 26.26 }, remainingEnduranceSimSeconds: 500, cruiseSpeedMetersPerSecond: 12 }
+
+    expect(isClearcutBingoRangeEligible(candidate, clearcutPosition, baseStations, TEST_ORBIT_RADIUS_METERS)).toBe(
+      isClearcutBingoRangeEligible(candidate, clearcutPosition, baseStations, TEST_ORBIT_RADIUS_METERS),
+    )
   })
 })

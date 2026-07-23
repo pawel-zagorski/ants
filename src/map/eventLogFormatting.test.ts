@@ -178,6 +178,39 @@ describe('formatEventLogEntry text per kind', () => {
     )
   })
 
+  it('formats a droneDispatchedToClearcut line with the rich drone label, as an info (issue Y: never a warning — a Clearcut dispatch is never a One-Way Mission)', () => {
+    const formatted = formatEventLogEntry(
+      entry('droneDispatchedToClearcut', {
+        droneId: 'drone-1',
+        droneModel: 'DJI Mavic 4 Pro',
+        droneType: 'Quadrocopter',
+        clearcutId: 'clearcut-1',
+        position: nearTower,
+      }),
+      scenarioWithEpoch,
+      world,
+    )
+    expect(formatted.text).toBe('Drone 1 (DJI Mavic 4 Pro, Quadrocopter) dispatched to investigate a clearcut 3.5 km NE of Tower 1')
+    expect(formatted.severity).toBe('info')
+  })
+
+  it('formats the Clearcut observed-activity lines with the plain Drone name (issue Y)', () => {
+    expect(
+      formatEventLogEntry(
+        entry('droneBeganClearcutOrbit', { droneId: 'drone-1', clearcutId: 'clearcut-1', position: nearTower }),
+        scenarioWithEpoch,
+        world,
+      ).text,
+    ).toBe('Drone 1 reached the clearcut and began orbiting 3.5 km NE of Tower 1')
+    expect(
+      formatEventLogEntry(
+        entry('droneReturningAfterClearcutOrbit', { droneId: 'drone-1', clearcutId: 'clearcut-1' }),
+        scenarioWithEpoch,
+        world,
+      ).text,
+    ).toBe('Drone 1 finished investigating the clearcut and is returning to base')
+  })
+
   it('formats recall/grounded/lost lines, with lost as a warning', () => {
     const droneFields = { droneId: 'drone-1', droneModel: 'DJI Mavic 4 Pro', droneType: 'Quadrocopter' as const }
     expect(formatEventLogEntry(entry('droneRecalledToBase', { ...droneFields, position: nearTower }), scenarioWithEpoch, world).text).toBe(

@@ -35,6 +35,9 @@ const SEVERITY_BY_KIND: Record<EventLogKind, LogSeverity> = {
   droneDispatchedOneWay: 'warning',
   droneBeganFireOrbit: 'info',
   droneReturningAfterOrbit: 'info',
+  droneDispatchedToClearcut: 'info',
+  droneBeganClearcutOrbit: 'info',
+  droneReturningAfterClearcutOrbit: 'info',
   droneRecalledToBase: 'info',
   droneResumedPatrol: 'info',
   droneGrounded: 'info',
@@ -226,6 +229,12 @@ function textForEntry(entry: EventLogEntry, world: World): string {
       return `${droneName(entry)} reached the fire and began orbiting ${locationText(entry, world)}`
     case 'droneReturningAfterOrbit':
       return `${droneName(entry)} finished investigating the fire and is returning to base`
+    case 'droneDispatchedToClearcut':
+      return `${droneLabel(entry, world)} dispatched to investigate a clearcut ${locationText(entry, world)}`
+    case 'droneBeganClearcutOrbit':
+      return `${droneName(entry)} reached the clearcut and began orbiting ${locationText(entry, world)}`
+    case 'droneReturningAfterClearcutOrbit':
+      return `${droneName(entry)} finished investigating the clearcut and is returning to base`
     case 'droneRecalledToBase':
       return `${droneLabel(entry, world)} ordered to return to nearest base (${recalledBaseName(entry, world)})`
     case 'droneResumedPatrol':

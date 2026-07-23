@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { advanceSimulation, initializeSimulationState, withManualDispatch, withManualFireDispatch } from './advanceSimulation'
+import {
+  advanceSimulation,
+  initializeSimulationState,
+  withManualClearcutDispatch,
+  withManualDispatch,
+  withManualFireDispatch,
+} from './advanceSimulation'
+import { clearcutFootprintHexCells, clearcutOrbitRadiusMeters } from './clearcutFootprint'
 import { INVESTIGATION_DURATION_SIM_SECONDS } from './dispatch'
 import { fireFootprintHexCells, fireOrbitRadiusMetersAt } from './growthEllipse'
 import { orbitLapDurationSimSeconds, orbitPositionFor } from './orbit'
@@ -1284,6 +1291,215 @@ describe('Lost Drone / One-Way Mission endurance exhaustion (issue W)', () => {
     const pastExhaustionStillMidLap = advanceSimulation(dispatched, MAX_ENDURANCE_SIM_SECONDS)
 
     expect(pastExhaustionStillMidLap.droneActivity['drone-1']).toMatchObject({ mode: 'investigatingFire', missionKind: 'roundTrip' })
+  })
+})
+
+describe('Clearcut investigation: Bingo-Range dispatch + orbit (issue Y)', () => {
+  const clearcutPosition = { lat: 64.55, lng: 26.25 }
+  const droneLinearSpeedMetersPerSecond = 10
+
+  function clearcutScenario(): Scenario {
+    return {
+      events: [
+        {
+          id: 'clearcut-1',
+          type: 'Clearcut',
+          position: clearcutPosition,
+          spawnAtSimSeconds: 0,
+          semiMajorAxisMeters: 200,
+          semiMinorAxisMeters: 100,
+          orientationDegrees: 0,
+        },
+      ],
+      wind: TEST_WIND,
+    }
+  }
+
+  // A Drone sitting right on the Clearcut's position, so Drone-Detection
+  // (Clearcuts are Drone-detected only — ADR-0009) happens deterministically
+  // at elapsedSimSeconds 0, isolating "does withManualClearcutDispatch behave
+  // correctly" from "did the Clearcut get Detected in the first place".
+  function worldWithDrone(): World {
+    return createWorldFixture({
+      baseStations: [{ id: 'base-1', type: 'BaseStation', position: clearcutPosition }],
+      drones: [
+        {
+          id: 'drone-1',
+          type: 'Quadrocopter',
+          position: clearcutPosition,
+          homeBaseStationId: 'base-1',
+          ...droneSpecFixture,
+          // Very high cruise speed so the travel phase completes in <0.01 sim
+          // seconds — these tests care about dispatch/orbit state, not travel duration.
+          cruiseSpeedMetersPerSecond: 10000,
+          patrolRadiusMeters: 100,
+          patrolSpeedMetersPerSecond: droneLinearSpeedMetersPerSecond,
+          detectionRadiusMeters: 500,
+        },
+      ],
+    })
+  }
+
+  const orbitRadiusMeters = clearcutOrbitRadiusMeters({
+    semiMajorAxisMeters: 200,
+    semiMinorAxisMeters: 100,
+    orientationDegrees: 0,
+  })
+
+  it('leaves a newly Detected Clearcut undispatched until explicitly sent', () => {
+    const state = advanceSimulation(initializeSimulationState(worldWithDrone(), clearcutScenario()), 0)
+
+    expect(state.clearcuts['clearcut-1'].tier).toBe('detected')
+    expect(state.droneActivity['drone-1']).toEqual({ mode: 'patrolling' })
+  })
+
+  it('starts the named Drone traveling to the named Clearcut on dispatch, then orbiting it after arrival', () => {
+    const state = advanceSimulation(initializeSimulationState(worldWithDrone(), clearcutScenario()), 0)
+
+    const dispatched = withManualClearcutDispatch(state, 'drone-1', 'clearcut-1')
+
+    expect(dispatched.droneActivity['drone-1']).toMatchObject({
+      mode: 'travelingToClearcut',
+      assignedClearcutId: 'clearcut-1',
+      departureSimSeconds: 0,
+      orbitRadiusMeters,
+    })
+
+    const arrived = advanceSimulation(dispatched, 1)
+    expect(arrived.droneActivity['drone-1']).toMatchObject({
+      mode: 'investigatingClearcut',
+      assignedClearcutId: 'clearcut-1',
+      orbitRadiusMeters,
+    })
+  })
+
+  it("ratchets the Clearcut's tier to 'investigated' the instant a Drone begins orbiting it, staying 'detected' while still en route", () => {
+    const state = advanceSimulation(initializeSimulationState(worldWithDrone(), clearcutScenario()), 0)
+    expect(state.clearcuts['clearcut-1'].tier).toBe('detected')
+
+    const dispatched = withManualClearcutDispatch(state, 'drone-1', 'clearcut-1')
+    expect(dispatched.clearcuts['clearcut-1'].tier).toBe('detected')
+
+    const arrived = advanceSimulation(dispatched, 1)
+    expect(arrived.clearcuts['clearcut-1'].tier).toBe('investigated')
+  })
+
+  it("exposes a Confirmed Shape, exactly matching the real static Clearcut Footprint, the instant it becomes 'investigated' — and forever after, unchanged", () => {
+    const dispatched = withManualClearcutDispatch(
+      advanceSimulation(initializeSimulationState(worldWithDrone(), clearcutScenario()), 0),
+      'drone-1',
+      'clearcut-1',
+    )
+    const expectedHexCells = clearcutFootprintHexCells({
+      semiMajorAxisMeters: 200,
+      semiMinorAxisMeters: 100,
+      orientationDegrees: 0,
+    })
+
+    // A real Simulation Clock ticks far more often than this test does, so
+    // advance one tick at a time (chaining state forward) rather than
+    // jumping straight from dispatch to a much later instant in one big
+    // leap — a single huge leap can collapse the whole
+    // travel→orbit→lap-complete→return sequence into one `advanceSimulation`
+    // call, which would skip right over the tick the 'investigated' ratchet
+    // is actually applied on (same caveat as the Fire "freeze" tests above).
+    let state = dispatched
+    for (const elapsedSimSeconds of [1, 50, 10_000]) {
+      state = advanceSimulation(state, elapsedSimSeconds)
+      expect(state.clearcuts['clearcut-1'].tier).toBe('investigated')
+      expect(
+        clearcutFootprintHexCells({
+          semiMajorAxisMeters: state.clearcuts['clearcut-1'].semiMajorAxisMeters,
+          semiMinorAxisMeters: state.clearcuts['clearcut-1'].semiMinorAxisMeters,
+          orientationDegrees: state.clearcuts['clearcut-1'].orientationDegrees,
+        }),
+      ).toEqual(expectedHexCells)
+    }
+  })
+
+  it('never reverts an investigated Clearcut back to "detected" once the Drone leaves', () => {
+    const dispatched = withManualClearcutDispatch(
+      advanceSimulation(initializeSimulationState(worldWithDrone(), clearcutScenario()), 0),
+      'drone-1',
+      'clearcut-1',
+    )
+    const lapDurationSimSeconds = orbitLapDurationSimSeconds(orbitRadiusMeters, droneLinearSpeedMetersPerSecond)
+
+    // Same "step through an intermediate still-orbiting tick first" reasoning
+    // as the Fire freeze tests: this lets the engine actually record
+    // 'investigated' on a real tick before the big jump past lap completion.
+    const stillOrbiting = advanceSimulation(dispatched, lapDurationSimSeconds - 1)
+    expect(stillOrbiting.droneActivity['drone-1']).toMatchObject({ mode: 'investigatingClearcut' })
+    expect(stillOrbiting.clearcuts['clearcut-1'].tier).toBe('investigated')
+
+    const afterLap = advanceSimulation(stillOrbiting, lapDurationSimSeconds + 5)
+    expect(afterLap.droneActivity['drone-1']).toEqual({ mode: 'patrolling' })
+    expect(afterLap.clearcuts['clearcut-1'].tier).toBe('investigated')
+
+    const muchLater = advanceSimulation(afterLap, lapDurationSimSeconds + 100_000)
+    expect(muchLater.clearcuts['clearcut-1'].tier).toBe('investigated')
+  })
+
+  it('completes exactly one orbit lap then automatically returns the Drone to patrolling', () => {
+    const dispatched = withManualClearcutDispatch(
+      advanceSimulation(initializeSimulationState(worldWithDrone(), clearcutScenario()), 0),
+      'drone-1',
+      'clearcut-1',
+    )
+    const lapDurationSimSeconds = orbitLapDurationSimSeconds(orbitRadiusMeters, droneLinearSpeedMetersPerSecond)
+
+    const justBeforeLapCompletes = advanceSimulation(dispatched, lapDurationSimSeconds - 1)
+    expect(justBeforeLapCompletes.droneActivity['drone-1']).toMatchObject({ mode: 'investigatingClearcut' })
+
+    const justAfterLapCompletes = advanceSimulation(dispatched, lapDurationSimSeconds + 1)
+    expect(justAfterLapCompletes.droneActivity['drone-1']).toEqual({ mode: 'patrolling' })
+  })
+
+  it('is a no-op when the named Drone is already investigating something else', () => {
+    const state = advanceSimulation(initializeSimulationState(worldWithDrone(), clearcutScenario()), 0)
+    const dispatched = withManualClearcutDispatch(state, 'drone-1', 'clearcut-1')
+    expect(dispatched.droneActivity['drone-1']).toMatchObject({ assignedClearcutId: 'clearcut-1' })
+
+    const stillOnClearcut1 = withManualClearcutDispatch(dispatched, 'drone-1', 'clearcut-1')
+
+    expect(stillOnClearcut1).toEqual(dispatched)
+  })
+
+  it('is a no-op when the named Clearcut is not (yet) Detected', () => {
+    const undetectedScenario: Scenario = {
+      events: [
+        {
+          id: 'clearcut-1',
+          type: 'Clearcut',
+          position: { lat: 60, lng: 20 },
+          spawnAtSimSeconds: 0,
+          semiMajorAxisMeters: 200,
+          semiMinorAxisMeters: 100,
+          orientationDegrees: 0,
+        },
+      ],
+      wind: TEST_WIND,
+    }
+    const state = advanceSimulation(initializeSimulationState(worldWithDrone(), undetectedScenario), 0)
+    expect(state.clearcuts['clearcut-1'].tier).toBe('undetected')
+
+    expect(withManualClearcutDispatch(state, 'drone-1', 'clearcut-1')).toEqual(state)
+  })
+
+  it('is a no-op when the named Drone or Clearcut id is unknown', () => {
+    const state = advanceSimulation(initializeSimulationState(worldWithDrone(), clearcutScenario()), 0)
+
+    expect(withManualClearcutDispatch(state, 'no-such-drone', 'clearcut-1')).toEqual(state)
+    expect(withManualClearcutDispatch(state, 'drone-1', 'no-such-clearcut')).toEqual(state)
+  })
+
+  it('does not mutate the state object passed in', () => {
+    const state = advanceSimulation(initializeSimulationState(worldWithDrone(), clearcutScenario()), 0)
+    const snapshotBefore = JSON.parse(JSON.stringify(state))
+
+    withManualClearcutDispatch(state, 'drone-1', 'clearcut-1')
+
+    expect(state).toEqual(snapshotBefore)
   })
 })
 

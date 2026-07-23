@@ -773,6 +773,128 @@ describe('RokuaMap Fire manual dispatch — Bingo Range / One-Way Mission (issue
   })
 })
 
+describe('RokuaMap Clearcut manual dispatch — Bingo Range only, orbit, permanent Confirmed Shape (issue Y)', () => {
+  const clearcutPosition = { lat: 64.55, lng: 26.25 }
+  // A Drone parked right on top of the Clearcut (patrolRadiusMeters: 1,
+  // patrolSpeedMetersPerSecond: 0 — same "guarantee immediate/deterministic
+  // detection" pattern the Base Station docked/deployed test above uses)
+  // guarantees Drone-Detection at elapsedSimSeconds 0 (Clearcuts are
+  // Drone-detected only — ADR-0009), and a Base Station at the same spot
+  // guarantees Bingo Range eligibility (near-zero round-trip distance).
+  const worldWithDroneOnClearcut: World = {
+    bounds: world.bounds,
+    towers: [],
+    baseStations: [{ id: 'base-1', type: 'BaseStation', position: clearcutPosition }],
+    drones: [
+      {
+        id: 'drone-1',
+        type: 'Quadrocopter',
+        position: clearcutPosition,
+        homeBaseStationId: 'base-1',
+        ...droneSpecFixture,
+        // High cruise speed so travel/orbit-lap phases resolve within a
+        // couple of Simulation Clock Steps — these tests care about
+        // dispatch/orbit/Confirmed-Shape state, not travel duration.
+        cruiseSpeedMetersPerSecond: 10000,
+        patrolRadiusMeters: 1,
+        patrolSpeedMetersPerSecond: 10,
+      },
+    ],
+  }
+  const clearcutScenario: Scenario = {
+    events: [
+      {
+        id: 'clearcut-1',
+        type: 'Clearcut',
+        position: clearcutPosition,
+        spawnAtSimSeconds: 0,
+        semiMajorAxisMeters: 200,
+        semiMinorAxisMeters: 100,
+        orientationDegrees: 0,
+      },
+    ],
+    wind: TEST_WIND,
+  }
+
+  it('opens a Clearcut panel with a single Bingo Range dispatch list and no One-Way Mission section', () => {
+    render(<RokuaMap world={worldWithDroneOnClearcut} scenario={clearcutScenario} />)
+
+    fireEvent.click(document.querySelector('.event-icon-clearcut') as Element)
+
+    const panel = screen.getByRole('dialog')
+    expect(panel).toHaveTextContent('clearcut-1')
+    expect(panel).toHaveTextContent('Bingo Range')
+    expect(panel).toHaveTextContent('drone-1')
+    expect(panel).not.toHaveTextContent('One-Way Mission')
+    expect(screen.getAllByRole('button', { name: 'Send' })).toHaveLength(1)
+  })
+
+  it('sends the Drone to the Clearcut, flips it to Investigated, then completes one orbit lap and returns the Drone to patrol — with a permanent Confirmed Shape replacing the Uncertainty Ellipse throughout', () => {
+    render(<RokuaMap world={worldWithDroneOnClearcut} scenario={clearcutScenario} />)
+
+    // Before dispatch: detected-but-not-investigated shows the Uncertainty
+    // Ellipse estimate, not the Confirmed Shape.
+    expect(document.querySelectorAll('.clearcut-estimate-ellipse')).toHaveLength(1)
+    expect(document.querySelectorAll('.confirmed-shape-hex')).toHaveLength(0)
+
+    fireEvent.click(document.querySelector('.event-icon-clearcut') as Element)
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+    // One Step (30 simulated seconds — STEP_SIM_SECONDS) is plenty, at this
+    // fixture's very high cruise speed, for the Drone to arrive and begin
+    // orbiting — flipping the Clearcut to Investigated and swapping the
+    // Uncertainty Ellipse for the (permanent) Confirmed Shape.
+    fireEvent.click(screen.getByRole('button', { name: 'Step' }))
+
+    expect(document.querySelectorAll('.clearcut-estimate-ellipse')).toHaveLength(0)
+    expect(document.querySelectorAll('.confirmed-shape-hex').length).toBeGreaterThan(0)
+
+    fireEvent.click(document.querySelector('.asset-icon-quadrocopter') as Element)
+    expect(screen.getByRole('dialog')).toHaveTextContent('clearcut-1')
+
+    // The orbit lap for this fixture (200m radius, 10 m/s patrol linear
+    // speed) takes ~125.7s — several more Steps comfortably complete it and
+    // fly the Drone back to patrolling, while the Confirmed Shape stays put.
+    for (let i = 0; i < 10; i += 1) {
+      fireEvent.click(screen.getByRole('button', { name: 'Step' }))
+    }
+
+    fireEvent.click(document.querySelector('.asset-icon-quadrocopter') as Element)
+    expect(screen.getByRole('dialog')).not.toHaveTextContent('clearcut-1')
+    expect(document.querySelectorAll('.confirmed-shape-hex').length).toBeGreaterThan(0)
+    expect(document.querySelectorAll('.clearcut-estimate-ellipse')).toHaveLength(0)
+  })
+
+  it('never lists a Drone already busy elsewhere, and excludes an unreachable Drone entirely (no fallback list to fall into)', () => {
+    const farDroneWorld: World = {
+      ...worldWithDroneOnClearcut,
+      drones: [
+        ...worldWithDroneOnClearcut.drones,
+        {
+          id: 'drone-2',
+          type: 'Quadrocopter',
+          position: { lat: 66, lng: 30 }, // hundreds of km away
+          homeBaseStationId: 'base-1',
+          ...droneSpecFixture,
+          maxEnduranceSimSeconds: 100,
+          patrolRadiusMeters: 1,
+          patrolSpeedMetersPerSecond: 0,
+        },
+      ],
+    }
+    render(<RokuaMap world={farDroneWorld} scenario={clearcutScenario} />)
+
+    fireEvent.click(document.querySelector('.event-icon-clearcut') as Element)
+    expect(screen.queryByText('drone-2')).toBeNull()
+    expect(screen.getAllByRole('button', { name: 'Send' })).toHaveLength(1)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    fireEvent.click(document.querySelector('.event-icon-clearcut') as Element)
+    expect(screen.queryByRole('button', { name: 'Send' })).toBeNull()
+    expect(screen.getByText(/no drones? currently in bingo range/i)).toBeInTheDocument()
+  })
+})
+
 describe('RokuaMap Return Envelope overlay (issue K)', () => {
   const base1Position = { lat: 64.5, lng: 26.25 }
   // 3500m east of base-1 — tuned against maxEnduranceSimSeconds/
