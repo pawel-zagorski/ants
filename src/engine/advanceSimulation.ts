@@ -88,6 +88,23 @@ const DETECTION_RADIUS_METERS_BY_DRONE_TYPE: Record<DroneType, number> = {
 }
 
 /**
+ * The fixed radius (meters) around a Clearcut's centroid within which
+ * still-`'undetected'` `PersonSighting` Events are revealed the instant the
+ * Clearcut becomes `'investigated'` (issue Z, `CONTEXT.md`'s Clearcut entry:
+ * "discovered-on-site payoff"). Deliberately an engine constant rather than
+ * scenario-authored — it's a property of how thoroughly an on-site
+ * investigation searches the immediate surroundings, not something a
+ * Scenario author tunes per Clearcut. Sized at 600m — comfortably larger
+ * than a typical authored Clearcut Footprint's own extent (e.g. the bundled
+ * "Illegal Deforestation" scenario's 350m semi-major axis), so Person
+ * Sightings hand-authored "around" a Clearcut's edges reliably fall inside
+ * it, while still being a tight enough radius that unrelated, far-away
+ * sightings are never swept in by this reveal (see
+ * {@link eventsWithClearcutSightingsRevealed}).
+ */
+export const CLEARCUT_SIGHTING_REVEAL_RADIUS_METERS = 600
+
+/**
  * Deterministic per-Drone phase offset so multiple Drones patrolling the
  * same Base Station don't sit exactly on top of each other at
  * `elapsedSimSeconds = 0`. Derived from the Drone's own id, not from array
@@ -637,6 +654,96 @@ function clearcutsAt(
   }
 
   return clearcuts
+}
+
+/**
+ * The Drone id currently `'investigatingClearcut'` `clearcutId`, if any —
+ * the id-returning sibling of {@link isAnyDroneOrbitingClearcut}, used by
+ * {@link eventsWithClearcutSightingsRevealed} to credit the investigating
+ * Drone as the revealed sightings' detector. Iterates `droneActivity` in its
+ * own key order for a deterministic pick in the (unsupported by any
+ * dispatch UI, but not engine-prevented) case of more than one Drone
+ * simultaneously orbiting the same Clearcut.
+ */
+function investigatingClearcutDroneId(
+  clearcutId: string,
+  droneActivity: Record<string, DroneActivityState>,
+): string | undefined {
+  for (const [droneId, activity] of Object.entries(droneActivity)) {
+    if (activity.mode === 'investigatingClearcut' && activity.assignedClearcutId === clearcutId) {
+      return droneId
+    }
+  }
+  return undefined
+}
+
+/**
+ * Issue Z's "discovered-on-site" payoff (`CONTEXT.md`'s Clearcut entry,
+ * ADR-0009): the instant a Clearcut transitions `'detected' ->
+ * 'investigated'` — i.e. `clearcuts[id].tier === 'investigated'` this tick
+ * while `incomingClearcuts[id]?.tier` was anything else — every
+ * still-`'undetected'` `PersonSighting` Event within
+ * {@link CLEARCUT_SIGHTING_REVEAL_RADIUS_METERS} of that Clearcut's centroid
+ * is revealed: flipped straight to `'detected'`, credited to the
+ * investigating Drone ({@link investigatingClearcutDroneId}) rather than any
+ * proximity/patrol detector, at this exact `elapsedSimSeconds` (the instant
+ * orbiting began — matching every other Detection's "stamped with the tick
+ * it actually happened on" convention). Deliberately keyed off the tier
+ * *transition*, not merely `tier === 'investigated'`, so this never re-fires
+ * on a later tick for an already-investigated Clearcut — a sighting spawned
+ * after investigation began stays undetected forever, matching "discovered
+ * on site" rather than "perpetually visible near an investigated Clearcut".
+ *
+ * Deterministic (ADR-0003): driven entirely by this tick's already-resolved
+ * `clearcuts`/`droneActivity` and each sighting's fixed authored position —
+ * no randomness, so the same Scenario run twice reveals the identical set at
+ * identical timestamps. Runs the revealed sighting back through
+ * {@link eventWithResolutionApplied} for parity with every other Detection
+ * path (`eventWithDetectionApplied` does the same immediately on a fresh
+ * proximity Detection), in case it happens to carry a `durationSimSeconds`
+ * of `0`.
+ *
+ * Only ever reveals `'undetected'` sightings — an already-`'detected'`
+ * (however it got that way) or `'resolved'` sighting is left completely
+ * unchanged, never re-credited to the investigating Drone. Returns `events`
+ * unchanged (same object identity) if no Clearcut transitioned into
+ * `'investigated'` this tick.
+ */
+function eventsWithClearcutSightingsRevealed(
+  events: Record<string, EventRuntimeState>,
+  clearcuts: Record<string, ClearcutRuntimeState>,
+  incomingClearcuts: Record<string, ClearcutRuntimeState>,
+  droneActivity: Record<string, DroneActivityState>,
+  elapsedSimSeconds: number,
+): Record<string, EventRuntimeState> {
+  let result = events
+
+  for (const [clearcutId, clearcut] of Object.entries(clearcuts)) {
+    if (clearcut.tier !== 'investigated' || incomingClearcuts[clearcutId]?.tier === 'investigated') continue
+
+    const detectingDroneId = investigatingClearcutDroneId(clearcutId, droneActivity)
+    if (detectingDroneId === undefined) continue
+
+    for (const [eventId, event] of Object.entries(result)) {
+      if (
+        event.type !== 'PersonSighting' ||
+        event.status !== 'undetected' ||
+        distanceMetersBetween(event.position, clearcut.position) > CLEARCUT_SIGHTING_REVEAL_RADIUS_METERS
+      ) {
+        continue
+      }
+
+      result = {
+        ...result,
+        [eventId]: eventWithResolutionApplied(
+          { ...event, status: 'detected', detectedByAssetId: detectingDroneId, detectedAtSimSeconds: elapsedSimSeconds },
+          elapsedSimSeconds,
+        ),
+      }
+    }
+  }
+
+  return result
 }
 
 /**
@@ -1443,9 +1550,19 @@ function deriveDronesEventsAndFires(
     }
   }
 
-  const events = eventsAt(scenarioEvents, elapsedSimSeconds, incomingEvents, dronePatrol)
   const fires = firesAt(scenarioFireIgnitions, elapsedSimSeconds, incomingFires, dronePatrol, towerDetection, droneActivity, wind)
   const clearcuts = clearcutsAt(scenarioClearcuts, elapsedSimSeconds, incomingClearcuts, dronePatrol, droneActivity)
+  // Issue Z: layered on top of ordinary proximity Detection, before the Log
+  // Entry loop below — so a freshly-revealed sighting is logged via the
+  // exact same "just left 'undetected'" check as any other Detection, no
+  // separate Log Entry kind/wording needed.
+  const events = eventsWithClearcutSightingsRevealed(
+    eventsAt(scenarioEvents, elapsedSimSeconds, incomingEvents, dronePatrol),
+    clearcuts,
+    incomingClearcuts,
+    droneActivity,
+    elapsedSimSeconds,
+  )
 
   // Detection Log Entries (fog-of-war, ADR-0008): an Event/Fire that has just
   // left `'undetected'` this call — i.e. it now carries a

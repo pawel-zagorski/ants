@@ -10,6 +10,7 @@ import { clearcutFootprintHexCells, clearcutOrbitRadiusMeters } from './clearcut
 import { INVESTIGATION_DURATION_SIM_SECONDS } from './dispatch'
 import { fireFootprintHexCells, fireOrbitRadiusMetersAt } from './growthEllipse'
 import { orbitLapDurationSimSeconds, orbitPositionFor } from './orbit'
+import { offsetLatLng } from '../map/geo'
 import { haversineDistanceMeters } from '../test/haversineDistanceMeters'
 import { createWorldFixture, droneSpecFixture, windFixture } from '../test/worldFixtures'
 import type { Scenario } from '../scenario/types'
@@ -1500,6 +1501,205 @@ describe('Clearcut investigation: Bingo-Range dispatch + orbit (issue Y)', () =>
     withManualClearcutDispatch(state, 'drone-1', 'clearcut-1')
 
     expect(state).toEqual(snapshotBefore)
+  })
+})
+
+describe('Reveal nearby Person Sightings on Clearcut investigation (issue Z)', () => {
+  const clearcutPosition = { lat: 64.55, lng: 26.25 }
+  const droneLinearSpeedMetersPerSecond = 10
+
+  // Positioned well within CLEARCUT_SIGHTING_REVEAL_RADIUS_METERS (600m) of
+  // the Clearcut's centroid, but far enough from the Drone's own (small,
+  // test-only) detectionRadiusMeters that ordinary proximity Detection never
+  // reaches it — isolating "reveal-on-investigation" from "the Drone simply
+  // flew close enough on its own".
+  const nearbySightingPosition = offsetLatLng(clearcutPosition, 300, 0)
+  // Well outside the reveal radius.
+  const farSightingPosition = offsetLatLng(clearcutPosition, 5000, 0)
+
+  function scenarioWithSightings(extraEvents: Scenario['events'] = []): Scenario {
+    return {
+      events: [
+        {
+          id: 'clearcut-1',
+          type: 'Clearcut',
+          position: clearcutPosition,
+          spawnAtSimSeconds: 0,
+          semiMajorAxisMeters: 200,
+          semiMinorAxisMeters: 100,
+          orientationDegrees: 0,
+        },
+        ...extraEvents,
+      ],
+      wind: TEST_WIND,
+    }
+  }
+
+  // A Drone patrolling near the Clearcut's centroid (deterministic instant
+  // Detection of the Clearcut itself, mirroring the issue Y fixture above:
+  // patrolRadiusMeters 50 <= detectionRadiusMeters 80). detectionRadiusMeters
+  // is kept small enough that the Drone never auto-detects the nearby Person
+  // Sighting via ordinary proximity/patrol Detection either while patrolling
+  // (250-350m away) or while orbiting the Clearcut's 200m-radius footprint
+  // (worst case 100m away, still > 80m) — isolating "reveal-on-investigation"
+  // from "the Drone simply flew close enough on its own".
+  function worldWithDrone(): World {
+    return createWorldFixture({
+      baseStations: [{ id: 'base-1', type: 'BaseStation', position: clearcutPosition }],
+      drones: [
+        {
+          id: 'drone-1',
+          type: 'Quadrocopter',
+          position: clearcutPosition,
+          homeBaseStationId: 'base-1',
+          ...droneSpecFixture,
+          cruiseSpeedMetersPerSecond: 10000,
+          patrolRadiusMeters: 50,
+          patrolSpeedMetersPerSecond: droneLinearSpeedMetersPerSecond,
+          detectionRadiusMeters: 80,
+        },
+      ],
+    })
+  }
+
+  function investigatedState(scenario: Scenario): SimulationState {
+    const dispatched = withManualClearcutDispatch(
+      advanceSimulation(initializeSimulationState(worldWithDrone(), scenario), 0),
+      'drone-1',
+      'clearcut-1',
+    )
+    const arrived = advanceSimulation(dispatched, 1)
+    expect(arrived.clearcuts['clearcut-1'].tier).toBe('investigated')
+    return arrived
+  }
+
+  it('flips an undetected Person Sighting within the reveal radius to detected, crediting the investigating Drone, once the Clearcut becomes investigated', () => {
+    const scenario = scenarioWithSightings([
+      {
+        id: 'sighting-nearby',
+        type: 'PersonSighting',
+        position: nearbySightingPosition,
+        spawnAtSimSeconds: 0,
+      },
+    ])
+
+    const beforeDispatch = advanceSimulation(initializeSimulationState(worldWithDrone(), scenario), 0)
+    expect(beforeDispatch.events['sighting-nearby'].status).toBe('undetected')
+
+    const arrived = investigatedState(scenario)
+
+    expect(arrived.events['sighting-nearby']).toMatchObject({
+      status: 'detected',
+      detectedByAssetId: 'drone-1',
+      detectedAtSimSeconds: 1,
+    })
+  })
+
+  it('leaves a Person Sighting outside the reveal radius undetected once the Clearcut becomes investigated', () => {
+    const scenario = scenarioWithSightings([
+      {
+        id: 'sighting-far',
+        type: 'PersonSighting',
+        position: farSightingPosition,
+        spawnAtSimSeconds: 0,
+      },
+    ])
+
+    const arrived = investigatedState(scenario)
+
+    expect(arrived.events['sighting-far'].status).toBe('undetected')
+  })
+
+  it('leaves an already-detected Person Sighting within the reveal radius unaffected (does not re-credit the investigating Drone)', () => {
+    const scenario = scenarioWithSightings([
+      {
+        id: 'sighting-nearby',
+        type: 'PersonSighting',
+        position: nearbySightingPosition,
+        spawnAtSimSeconds: 0,
+      },
+    ])
+
+    // A second, stationary Drone sitting right on the sighting so it gets
+    // detected the ordinary way well before the Clearcut is investigated.
+    const world = worldWithDrone()
+    const worldWithSecondDrone: World = {
+      ...world,
+      drones: [
+        ...world.drones,
+        {
+          id: 'drone-2',
+          type: 'Quadrocopter',
+          position: nearbySightingPosition,
+          homeBaseStationId: 'base-1',
+          ...droneSpecFixture,
+          patrolRadiusMeters: 10,
+          patrolSpeedMetersPerSecond: droneLinearSpeedMetersPerSecond,
+          detectionRadiusMeters: 500,
+        },
+      ],
+    }
+
+    const initial = advanceSimulation(initializeSimulationState(worldWithSecondDrone, scenario), 0)
+    expect(initial.events['sighting-nearby']).toMatchObject({
+      status: 'detected',
+      detectedByAssetId: 'drone-2',
+      detectedAtSimSeconds: 0,
+    })
+
+    const dispatched = withManualClearcutDispatch(initial, 'drone-1', 'clearcut-1')
+    const arrived = advanceSimulation(dispatched, 1)
+    expect(arrived.clearcuts['clearcut-1'].tier).toBe('investigated')
+
+    expect(arrived.events['sighting-nearby']).toMatchObject({
+      status: 'detected',
+      detectedByAssetId: 'drone-2',
+      detectedAtSimSeconds: 0,
+    })
+  })
+
+  it('is deterministic: running the same scenario twice reveals the identical set of sightings at identical timestamps', () => {
+    const scenario = scenarioWithSightings([
+      {
+        id: 'sighting-nearby',
+        type: 'PersonSighting',
+        position: nearbySightingPosition,
+        spawnAtSimSeconds: 0,
+      },
+      {
+        id: 'sighting-far',
+        type: 'PersonSighting',
+        position: farSightingPosition,
+        spawnAtSimSeconds: 0,
+      },
+    ])
+
+    const runOnce = investigatedState(scenario)
+    const runTwice = investigatedState(scenario)
+
+    expect(runTwice.events).toEqual(runOnce.events)
+  })
+
+  it('produces a normal "Person sighting detected" Event Log line for the revealed sighting, same as any other Detection', () => {
+    const scenario = scenarioWithSightings([
+      {
+        id: 'sighting-nearby',
+        type: 'PersonSighting',
+        position: nearbySightingPosition,
+        spawnAtSimSeconds: 0,
+      },
+    ])
+
+    const arrived = investigatedState(scenario)
+
+    const revealEntry = arrived.log.find((entry) => entry.eventId === 'sighting-nearby')
+    expect(revealEntry).toMatchObject({
+      kind: 'eventDetected',
+      severity: 'info',
+      eventType: 'PersonSighting',
+      droneId: 'drone-1',
+      simSeconds: 1,
+    })
   })
 })
 
