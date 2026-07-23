@@ -2,8 +2,8 @@ import { divIcon, type DivIcon } from 'leaflet'
 import type { EventStatus } from '../engine/types'
 import type { EventType } from '../scenario/types'
 
-/** Marker rendered size in pixels — matches `ICON_SIZE` in `assetIcons.ts`. */
-const ICON_SIZE = 26
+/** Leaflet icon footprint in pixels — sized for a ~44px touch target. */
+const HIT_SIZE = 44
 
 /**
  * One shape/letter/color combination per {@link EventType}, mirroring
@@ -33,8 +33,8 @@ export function iconForEvent(type: EventType, status: EventStatus): DivIcon {
   const statusClassName = `event-icon-${status}`
   const icon = divIcon({
     className: `event-icon event-icon-${type.toLowerCase()} ${statusClassName}`,
-    html: `<span class="event-icon-shape ${shapeClassName}">${label}</span>`,
-    iconSize: [ICON_SIZE, ICON_SIZE],
+    html: `<span class="event-icon-hit-area"><span class="event-icon-shape ${shapeClassName}">${label}</span></span>`,
+    iconSize: [HIT_SIZE, HIT_SIZE],
   })
 
   iconCache.set(cacheKey, icon)

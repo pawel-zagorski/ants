@@ -1,8 +1,8 @@
 import { divIcon, type DivIcon } from 'leaflet'
 import type { FireTier } from '../engine/types'
 
-/** Marker rendered size in pixels — matches `ICON_SIZE` in `assetIcons.ts`/`eventIcons.ts`. */
-const ICON_SIZE = 26
+/** Leaflet icon footprint in pixels — sized for a ~44px touch target. */
+const HIT_SIZE = 44
 
 const iconCache = new Map<FireTier, DivIcon>()
 
@@ -26,8 +26,8 @@ export function iconForFire(tier: FireTier): DivIcon {
   const statusClassName = tier === 'undetected' ? 'event-icon-undetected' : 'event-icon-detected'
   const icon = divIcon({
     className: `event-icon event-icon-fire ${statusClassName}`,
-    html: `<span class="event-icon-shape event-icon-shape-fire">FI</span>`,
-    iconSize: [ICON_SIZE, ICON_SIZE],
+    html: `<span class="event-icon-hit-area"><span class="event-icon-shape event-icon-shape-fire">FI</span></span>`,
+    iconSize: [HIT_SIZE, HIT_SIZE],
   })
 
   iconCache.set(tier, icon)

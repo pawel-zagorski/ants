@@ -12,7 +12,8 @@ body,
   display: flex;
   flex-direction: column;
   height: 100vh;
-  width: 100vw;
+  height: 100dvh;
+  width: 100%;
 }
 
 /* The map's flex area. `min-height: 0` lets this flex child actually shrink
@@ -31,14 +32,24 @@ body,
   width: 100%;
 }
 
+/* Transparent wrapper sized for a ~44px touch target; the visible glyph
+   stays smaller inside (`.asset-icon-shape`). */
+.asset-icon-hit-area {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+}
+
 /* Asset markers (issue B) — shape + color + letter, never color alone, so
    Tower/Base Station/Quadrocopter/Fixed-Wing Drone stay distinguishable. */
 .asset-icon-shape {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: 32px;
+  height: 32px;
   color: #ffffff;
   font-family: system-ui, sans-serif;
   font-size: 12px;
@@ -104,11 +115,15 @@ body,
   right: 16px;
   z-index: 1000;
   width: 220px;
+  max-height: calc(100% - 32px);
   padding: 16px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   background: #ffffff;
   border-radius: 8px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
   font-family: system-ui, sans-serif;
+  box-sizing: border-box;
 }
 
 /* Card photo banner — bleeds into the panel's own padding so it spans the
@@ -140,11 +155,16 @@ body,
 
 .asset-panel-close {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
   border: none;
   background: none;
-  font-size: 18px;
+  font-size: 22px;
   line-height: 1;
   cursor: pointer;
   color: #555555;
@@ -177,7 +197,8 @@ body,
   align-items: center;
   justify-content: center;
   height: 100vh;
-  width: 100vw;
+  height: 100dvh;
+  width: 100%;
   font-family: system-ui, sans-serif;
   font-size: 16px;
   text-align: center;
@@ -198,7 +219,8 @@ body,
   align-items: center;
   justify-content: center;
   height: 100vh;
-  width: 100vw;
+  height: 100dvh;
+  width: 100%;
   font-family: system-ui, sans-serif;
   padding: 24px;
   text-align: center;
@@ -344,7 +366,9 @@ body,
   border: 1px solid #d1d5db;
   border-radius: 4px;
   background: #f9fafb;
-  padding: 4px 8px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px 12px;
   font-size: 13px;
 }
 
@@ -385,15 +409,20 @@ body,
    while the light-blue Return Envelope overlay it explains is actually on the
    map (a Drone panel is open and the Drone is not terminal). */
 .asset-panel-drone-actions {
+  position: sticky;
+  bottom: 0;
   margin-top: 12px;
+  padding-top: 8px;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  background: #ffffff;
 }
 
 .asset-panel-return-button {
   align-self: flex-start;
-  padding: 6px 12px;
+  min-height: 44px;
+  padding: 10px 16px;
   font-family: system-ui, sans-serif;
   font-size: 13px;
   font-weight: 600;
@@ -446,6 +475,14 @@ body,
   line-height: 1.35;
 }
 
+.event-icon-hit-area {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+}
+
 /* Event markers (issue D) — shape + color + label, mirroring the asset
    icon convention. `.event-icon-undetected` is the Ground Truth View's
    faded/dashed treatment for Events the sensor network hasn't Detected. */
@@ -453,8 +490,8 @@ body,
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 30px;
+  height: 30px;
   color: #ffffff;
   font-family: system-ui, sans-serif;
   font-size: 10px;
@@ -586,9 +623,12 @@ body,
    doc comment) but adds its own "Available Drones" list/Send-button
    section, which AssetPanel has no equivalent of. */
 .event-panel-drones {
+  position: sticky;
+  bottom: 0;
   margin-top: 12px;
   border-top: 1px solid #e5e7eb;
   padding-top: 8px;
+  background: #ffffff;
 }
 
 .event-panel-drones-title {
@@ -625,7 +665,9 @@ body,
   border-radius: 4px;
   background: #1d4ed8;
   color: #ffffff;
-  padding: 2px 10px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px 14px;
   font-size: 13px;
 }
 
@@ -637,9 +679,12 @@ body,
    precedent as `FirePanel.tsx`'s/`EventPanel.tsx`'s own doc comments about
    not sharing formatters) even though the rules are currently identical. */
 .fire-panel-drones {
+  position: sticky;
+  bottom: 0;
   margin-top: 12px;
   border-top: 1px solid #e5e7eb;
   padding-top: 8px;
+  background: #ffffff;
 }
 
 .fire-panel-drones-title {
@@ -676,7 +721,9 @@ body,
   border-radius: 4px;
   background: #1d4ed8;
   color: #ffffff;
-  padding: 2px 10px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px 14px;
   font-size: 13px;
 }
 
@@ -687,9 +734,12 @@ body,
    its own tiny styling" precedent noted above, even though the rules are
    currently identical. */
 .clearcut-panel-drones {
+  position: sticky;
+  bottom: 0;
   margin-top: 12px;
   border-top: 1px solid #e5e7eb;
   padding-top: 8px;
+  background: #ffffff;
 }
 
 .clearcut-panel-drones-title {
@@ -726,7 +776,9 @@ body,
   border-radius: 4px;
   background: #1d4ed8;
   color: #ffffff;
-  padding: 2px 10px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px 14px;
   font-size: 13px;
 }
 
@@ -735,6 +787,7 @@ body,
   display: flex;
   align-items: center;
   gap: 6px;
+  min-height: 44px;
   padding: 8px 12px;
   background: #ffffff;
   border-radius: 8px;
@@ -809,7 +862,8 @@ body,
   border-radius: 4px;
   background: #0f172a;
   color: #e2e8f0;
-  padding: 2px 10px;
+  min-height: 44px;
+  padding: 8px 14px;
   font-size: 12px;
 }
 
@@ -865,4 +919,68 @@ body,
 .event-log-entry-warning .event-log-text {
   color: #fbbf24;
   font-weight: 600;
+}
+
+/* Mobile-first responsive pass (tier 1): stack cramped bottom controls,
+   shrink the Event Log strip, widen scrollable status panels, and respect
+   notched-device safe areas. Breakpoint matches common phone widths in
+   portrait (~640px). */
+@media (max-width: 640px) {
+  .simulation-layout {
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+
+  .map-area {
+    padding-left: env(safe-area-inset-left, 0);
+    padding-right: env(safe-area-inset-right, 0);
+  }
+
+  .asset-panel {
+    left: 16px;
+    right: 16px;
+    width: auto;
+    max-height: calc(100% - 24px);
+  }
+
+  .asset-panel-photo {
+    height: 80px;
+  }
+
+  .bottom-controls {
+    flex-direction: column;
+    align-items: flex-start;
+    bottom: max(12px, env(safe-area-inset-bottom, 0px));
+    left: max(12px, env(safe-area-inset-left, 0px));
+    max-width: calc(100% - 24px);
+    gap: 6px;
+  }
+
+  .simulation-clock-panel {
+    flex-wrap: wrap;
+    max-width: 100%;
+  }
+
+  .simulation-clock-time {
+    min-width: 0;
+    flex: 1 1 100%;
+    font-size: 12px;
+  }
+
+  .map-logo-badge {
+    bottom: max(12px, env(safe-area-inset-bottom, 0px));
+    right: max(12px, env(safe-area-inset-right, 0px));
+  }
+
+  .event-log-content {
+    height: 100px;
+  }
+
+  .event-log-timestamp {
+    white-space: normal;
+  }
+
+  .event-log-entry {
+    flex-direction: column;
+    gap: 2px;
+  }
 }

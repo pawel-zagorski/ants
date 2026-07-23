@@ -1,8 +1,8 @@
 import { divIcon, type DivIcon } from 'leaflet'
 import type { AssetType } from '../world/types'
 
-/** Marker rendered size in pixels — square, so Leaflet can center it on the asset's position. */
-const ICON_SIZE = 28
+/** Leaflet icon footprint in pixels — sized for a ~44px touch target. */
+const HIT_SIZE = 44
 
 /**
  * One outer class/shape/letter combination per {@link AssetType},
@@ -46,8 +46,8 @@ export function iconForAssetType(type: AssetType, isLost: boolean = false): DivI
   const lostClassName = isLost ? ' asset-icon-lost' : ''
   const icon = divIcon({
     className: `asset-icon ${typeClassName}${lostClassName}`,
-    html: `<span class="asset-icon-shape ${shapeClassName}">${label}</span>`,
-    iconSize: [ICON_SIZE, ICON_SIZE],
+    html: `<span class="asset-icon-hit-area"><span class="asset-icon-shape ${shapeClassName}">${label}</span></span>`,
+    iconSize: [HIT_SIZE, HIT_SIZE],
   })
 
   iconCache.set(cacheKey, icon)
