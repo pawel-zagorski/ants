@@ -1,5 +1,5 @@
 import { distanceMetersBetween } from '../map/geo'
-import type { FireRuntimeState } from './types'
+import type { ClearcutRuntimeState, FireRuntimeState } from './types'
 import type { Tower } from '../world/types'
 
 /**
@@ -100,4 +100,24 @@ export function uncertaintyEllipseRadiusMetersForFire(
   const elapsedSimSecondsSinceDetection = elapsedSimSeconds - (fire.detectedAtSimSeconds ?? elapsedSimSeconds)
 
   return uncertaintyEllipseRadiusMeters(detectingTowerDistanceMeters, elapsedSimSecondsSinceDetection)
+}
+
+/**
+ * The Uncertainty Ellipse radius (meters) for a `detected`-tier Clearcut
+ * (ADR-0009, `CONTEXT.md`'s updated Uncertainty Ellipse entry) — the
+ * distance-only sibling of {@link uncertaintyEllipseRadiusMetersForFire}.
+ * Reuses the very same {@link uncertaintyEllipseRadiusMeters} blur formula,
+ * but with the **time-growth term hard-zeroed**: a Clearcut never spreads,
+ * so its estimate is a fixed, distance-only blur that does not grow while
+ * it sits un-Investigated (contrast a Fire, whose ellipse grows the longer
+ * it goes un-Investigated). The distance term is `detectedFromDistanceMeters`
+ * — the straight-line distance from the detecting Drone to the Clearcut
+ * centroid captured *once*, at Detection time (`advanceSimulation.ts`'s
+ * `clearcutWithDetectionApplied`) — not a live per-tick distance, so the
+ * blur is stable even as the detecting Drone flies on. Falls back to a pure
+ * base-radius blur when `detectedFromDistanceMeters` is absent (defensive;
+ * a real `detected` Clearcut always has one).
+ */
+export function uncertaintyEllipseRadiusMetersForClearcut(clearcut: ClearcutRuntimeState): number {
+  return uncertaintyEllipseRadiusMeters(clearcut.detectedFromDistanceMeters ?? 0, 0)
 }

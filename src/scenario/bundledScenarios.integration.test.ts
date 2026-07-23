@@ -9,6 +9,7 @@ import worldJson from '../../public/world.json'
 import quietDayJson from '../../public/scenario-quiet-day.json'
 import wildfireOutbreakJson from '../../public/scenario-wildfire-outbreak.json'
 import hikerIntrusionJson from '../../public/scenario-hiker-intrusion.json'
+import illegalDeforestationJson from '../../public/scenario-illegal-deforestation.json'
 
 /**
  * Proves issue H's acceptance criteria against the *real* `public/world.json`
@@ -45,6 +46,7 @@ describe('bundled scenarios load and run without errors against the real world.j
     ['Quiet Day', quietDayJson],
     ['Wildfire Outbreak', wildfireOutbreakJson],
     ['Hiker Intrusion', hikerIntrusionJson],
+    ['Illegal Deforestation', illegalDeforestationJson],
   ])('%s parses and runs for 400 simulated seconds with no thrown error', (_name, json) => {
     const scenario = parseScenario(json)
     expect(() => runScenario(scenario, 400)).not.toThrow()
@@ -169,11 +171,64 @@ describe('"Hiker Intrusion" — invisible fog-of-war stretch, then Detected by a
   })
 })
 
+describe('"Illegal Deforestation" — a default-patrol Drone spots the Clearcut from a distance (issue X)', () => {
+  const scenario = parseScenario(illegalDeforestationJson)
+  const clearcutId = 'illegal-deforestation-clearcut-1'
+
+  it('spawns the Clearcut into SimulationState.clearcuts (a sibling map), never into events/fires', () => {
+    const state = runScenario(scenario, 1)
+    expect(state.clearcuts[clearcutId]).toBeDefined()
+    expect(state.events[clearcutId]).toBeUndefined()
+    expect(state.fires[clearcutId]).toBeUndefined()
+  })
+
+  it('is still undetected early on (a real fog-of-war stretch before the patrol sweep reaches it)', () => {
+    const state = runScenario(scenario, 60)
+    expect(state.clearcuts[clearcutId].tier).toBe('undetected')
+  })
+
+  it('is detected by a Fixed-Wing Drone (drone-2), never a Tower, within the run', () => {
+    const state = runScenario(scenario, 400)
+    expect(state.clearcuts[clearcutId].tier).toBe('detected')
+    expect(state.clearcuts[clearcutId].detectedByAssetId).toBe('drone-2')
+    expect(droneIds).toContain(state.clearcuts[clearcutId].detectedByAssetId)
+    expect(towerIds).not.toContain(state.clearcuts[clearcutId].detectedByAssetId)
+  })
+
+  it('is an estimate-only Detection — it never auto-investigates (tier stays "detected", not "investigated")', () => {
+    let everInvestigated = false
+    const state = runScenario(scenario, 400, (s) => {
+      if (s.clearcuts[clearcutId]?.tier === 'investigated') everInvestigated = true
+    })
+    expect(everInvestigated).toBe(false)
+    expect(state.clearcuts[clearcutId].tier).toBe('detected')
+  })
+
+  it('records the detecting-Drone distance at Detection (for the fixed, distance-only estimate)', () => {
+    const state = runScenario(scenario, 400)
+    expect(state.clearcuts[clearcutId].detectedFromDistanceMeters).toBeDefined()
+  })
+
+  it('is deterministic: the same run twice produces an identical first-Detection tick', () => {
+    const firstDetectedTick = () => {
+      let tick: number | undefined
+      runScenario(parseScenario(illegalDeforestationJson), 400, (state) => {
+        if (tick === undefined && state.clearcuts[clearcutId]?.tier === 'detected') tick = state.elapsedSimSeconds
+      })
+      return tick
+    }
+    const runA = firstDetectedTick()
+    const runB = firstDetectedTick()
+    expect(runA).toBeDefined()
+    expect(runA).toBe(runB)
+  })
+})
+
 describe('the scenario dropdown registry', () => {
-  it('lists all three PRD-named scenarios with the exact PRD names', async () => {
+  it('lists all four bundled scenarios with their exact names', async () => {
     const { BUNDLED_SCENARIOS } = await import('./bundledScenarios')
     const names = BUNDLED_SCENARIOS.map((entry) => entry.name)
-    expect(names).toEqual(['Quiet Day', 'Wildfire Outbreak', 'Hiker Intrusion'])
+    expect(names).toEqual(['Quiet Day', 'Wildfire Outbreak', 'Hiker Intrusion', 'Illegal Deforestation'])
     for (const entry of BUNDLED_SCENARIOS) {
       expect(entry.description.length).toBeGreaterThan(0)
     }

@@ -46,6 +46,39 @@ function collectFireIgnitionIssues(value: Record<string, unknown>, path: string,
   }
 }
 
+/**
+ * Validates a Clearcut entry (ADR-0009): `id`/`position` (centroid)/
+ * `spawnAtSimSeconds` plus the static footprint shape
+ * (`semiMajorAxisMeters`/`semiMinorAxisMeters`, both strictly positive, and
+ * `orientationDegrees`, a compass bearing in `[0, 360]`). Like a Fire
+ * ignition — and for the same reason — a `durationSimSeconds` is rejected
+ * outright, since a Clearcut never auto-resolves.
+ */
+function collectClearcutIssues(value: Record<string, unknown>, path: string, issues: string[]): void {
+  collectStringFieldIssues(value.id, `${path}.id`, issues)
+  collectLatLngIssues(value.position, `${path}.position`, issues)
+
+  if (!isFiniteNumber(value.spawnAtSimSeconds) || value.spawnAtSimSeconds < 0) {
+    issues.push(`${path}.spawnAtSimSeconds must be a non-negative finite number`)
+  }
+
+  if (!isFiniteNumber(value.semiMajorAxisMeters) || value.semiMajorAxisMeters <= 0) {
+    issues.push(`${path}.semiMajorAxisMeters must be a positive finite number`)
+  }
+
+  if (!isFiniteNumber(value.semiMinorAxisMeters) || value.semiMinorAxisMeters <= 0) {
+    issues.push(`${path}.semiMinorAxisMeters must be a positive finite number`)
+  }
+
+  if (!isFiniteNumber(value.orientationDegrees) || value.orientationDegrees < 0 || value.orientationDegrees > 360) {
+    issues.push(`${path}.orientationDegrees must be a finite number between 0 and 360`)
+  }
+
+  if (value.durationSimSeconds !== undefined) {
+    issues.push(`${path}.durationSimSeconds must not be present on a Clearcut entry — Clearcuts never auto-resolve`)
+  }
+}
+
 /** Validates a Person Sighting/Fallen Tree Event entry — unchanged from before ADR-0004's Fire split. */
 function collectEventIssues(value: Record<string, unknown>, path: string, issues: string[]): void {
   collectStringFieldIssues(value.id, `${path}.id`, issues)
@@ -81,6 +114,11 @@ function collectScenarioEntryIssues(value: unknown, path: string, issues: string
 
   if (value.type === 'Fire') {
     collectFireIgnitionIssues(value, path, issues)
+    return
+  }
+
+  if (value.type === 'Clearcut') {
+    collectClearcutIssues(value, path, issues)
     return
   }
 

@@ -42,4 +42,10 @@ export const BUNDLED_SCENARIOS: readonly BundledScenarioListing[] = [
     description: 'A Person Sighting stays invisible until a patrolling Drone finally passes by.',
     url: withBase('scenario-hiker-intrusion.json'),
   },
+  {
+    id: 'illegal-deforestation',
+    name: 'Illegal Deforestation',
+    description: 'A patrolling Drone spots an illegal Clearcut from a distance — a rough estimate until investigated.',
+    url: withBase('scenario-illegal-deforestation.json'),
+  },
 ]
