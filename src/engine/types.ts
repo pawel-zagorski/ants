@@ -44,6 +44,20 @@ export interface DronePatrolState {
    * positions or durations.
    */
   cruiseSpeedMetersPerSecond: number
+  /**
+   * The Drone's optional world-authored Patrol Route (issue AA) — the ordered
+   * waypoints it flies as a closed loop instead of the circular base-station
+   * loop (`patrolCenter`/`patrolRadiusMeters`/`angularSpeedRadiansPerSecond`),
+   * carried through from `Drone.patrolRoute` in `initializeSimulationState`.
+   * Only set when the World gave this Drone a usable route (at least two
+   * waypoints); absent means the legacy base-station loop, so
+   * `advanceSimulation.ts`'s `positionForActivity` falls back to the circular
+   * math unchanged. The circular fields above stay populated either way (a
+   * routed Drone still reports its type-based patrol speed via
+   * `patrolLinearSpeedMetersPerSecond`, which also sets the route's fly
+   * speed), so no other consumer needs to special-case a routed Drone.
+   */
+  patrolRoute?: LatLng[]
   position: LatLng
 }
 

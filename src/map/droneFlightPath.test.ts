@@ -76,8 +76,28 @@ function fireFixture(): FireRuntimeState {
 }
 
 describe('droneFlightPathFor', () => {
-  it('returns nothing for a patrolling Drone', () => {
+  it('returns nothing for a patrolling Drone on the legacy base-station loop (no route)', () => {
     const state = stateFixture({ mode: 'patrolling' })
+
+    expect(droneFlightPathFor('drone-1', state)).toBeNull()
+  })
+
+  it('returns the closed waypoint loop for a patrolling Drone with a Patrol Route (issue AA)', () => {
+    const waypoints: LatLng[] = [
+      { lat: 64.55, lng: 26.3 },
+      { lat: 64.55, lng: 26.05 },
+      { lat: 64.45, lng: 26.05 },
+    ]
+    const state = stateFixture({ mode: 'patrolling' }, { patrol: patrolFixture({ patrolRoute: waypoints }) })
+
+    expect(droneFlightPathFor('drone-1', state)).toEqual({ kind: 'route', waypoints })
+  })
+
+  it('ignores a degenerate (single-waypoint) Patrol Route, drawing nothing', () => {
+    const state = stateFixture(
+      { mode: 'patrolling' },
+      { patrol: patrolFixture({ patrolRoute: [{ lat: 64.5, lng: 26.25 }] }) },
+    )
 
     expect(droneFlightPathFor('drone-1', state)).toBeNull()
   })

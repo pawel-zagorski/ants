@@ -141,27 +141,31 @@ describe('"Hiker Intrusion" — invisible fog-of-war stretch, then Detected by a
     expect(state.events[personId].status).toBe('undetected')
   })
 
-  it('is still "undetected" at 150s — comfortably before the tuned Drone sweep reaches it', () => {
-    const state = runScenario(scenario, 150)
+  it('is still "undetected" at 200s — comfortably before the routed Drone sweep reaches it', () => {
+    // Issue AA: drone-2 now flies a wide world Patrol Route (a big western
+    // sweep) rather than its old tight base-1 perimeter loop, so its pass
+    // near the hiker lands a little later (first Detection at 251s — see
+    // below) than the old base loop's ~sub-250s pass. Still a long,
+    // demonstrable fog-of-war stretch first.
+    const state = runScenario(scenario, 200)
     expect(state.events[personId].status).toBe('undetected')
   })
 
-  it('becomes "detected" by 250s, once the patrolling Drone (drone-2) sweeps within range', () => {
-    const state = runScenario(scenario, 250)
+  it('becomes "detected" by 300s, once the routed Drone (drone-2) sweeps within range', () => {
+    const state = runScenario(scenario, 300)
     expect(state.events[personId].status).toBe('detected')
     expect(state.events[personId].detectedByAssetId).toBe('drone-2')
     expect(towerIds).not.toContain(state.events[personId].detectedByAssetId)
   })
 
-  it('finds the exact tick it first flips to "detected", confirming a real (non-instant) delay', () => {
+  it('finds the exact tick it first flips to "detected" (251s under the issue AA Patrol Route), confirming a real (non-instant) delay', () => {
     let firstDetectedAtSimSeconds: number | undefined
     runScenario(scenario, 400, (state) => {
       if (firstDetectedAtSimSeconds === undefined && state.events[personId]?.status === 'detected') {
         firstDetectedAtSimSeconds = state.elapsedSimSeconds
       }
     })
-    expect(firstDetectedAtSimSeconds).toBeDefined()
-    expect(firstDetectedAtSimSeconds as number).toBeGreaterThanOrEqual(60)
+    expect(firstDetectedAtSimSeconds).toBe(251)
   })
 })
 

@@ -21,14 +21,21 @@ import type { SimulationState } from '../engine/types'
  *   same `orbitRadiusMeters` `engine/orbit.ts` uses to place the Drone), so
  *   the drawn circle traces exactly the path the Drone follows.
  *
- * `'patrolling'`, `'grounded'`, and `'lost'` have no flight to draw (a
- * patrolling Drone has no dispatch destination; a Grounded Drone is parked at
- * its Base Station; a Lost Drone is frozen with none) — those, and any mode
- * whose target Event/Fire has gone missing, return `null`.
+ * - `'route'` — the closed waypoint loop of a Drone's world-authored Patrol
+ *   Route (issue AA), drawn while it is `'patrolling'` that route instead of
+ *   the default base-station loop. Unlike the other kinds this is a standing
+ *   overlay of where the Drone patrols, not a transient dispatch flight.
+ *
+ * A `'patrolling'` Drone with no Patrol Route draws nothing (its tight/long
+ * base-station loop is left implicit, unchanged from before issue AA);
+ * `'grounded'` and `'lost'` likewise have no flight to draw (a Grounded Drone
+ * is parked at its Base Station; a Lost Drone is frozen with none) — those,
+ * and any mode whose target Event/Fire has gone missing, return `null`.
  */
 export type DroneFlightPath =
   | { kind: 'trajectory'; from: LatLng; to: LatLng }
   | { kind: 'orbit'; center: LatLng; radiusMeters: number }
+  | { kind: 'route'; waypoints: LatLng[] }
 
 /**
  * The {@link DroneFlightPath} to draw for `droneId` given the current
@@ -72,6 +79,12 @@ export function droneFlightPathFor(droneId: string, state: SimulationState): Dro
     case 'returningToStation':
       return { kind: 'trajectory', from: patrol.position, to: activity.targetPosition }
     case 'patrolling':
+      // A routed Drone (issue AA) draws its closed waypoint loop; a Drone on
+      // the legacy base-station loop draws nothing, unchanged from before.
+      if (patrol.patrolRoute && patrol.patrolRoute.length >= 2) {
+        return { kind: 'route', waypoints: patrol.patrolRoute }
+      }
+      return null
     case 'grounded':
     case 'lost':
       return null

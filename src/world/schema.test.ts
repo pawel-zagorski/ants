@@ -154,6 +154,52 @@ describe('parseWorld', () => {
     expect(() => parseWorld(badPayload)).toThrow(/payload/)
   })
 
+  it('accepts a Drone with an optional patrolRoute of valid waypoints (issue AA)', () => {
+    const withPatrolRoute = {
+      ...validWorld,
+      drones: [
+        {
+          ...validWorld.drones[0],
+          patrolRoute: [
+            { lat: 64.55, lng: 26.3 },
+            { lat: 64.55, lng: 26.05 },
+            { lat: 64.45, lng: 26.05 },
+          ],
+        },
+      ],
+    }
+    expect(parseWorld(withPatrolRoute)).toEqual(withPatrolRoute)
+  })
+
+  it('accepts a Drone with an empty patrolRoute (treated as legacy base-station loop)', () => {
+    const withEmptyRoute = {
+      ...validWorld,
+      drones: [{ ...validWorld.drones[0], patrolRoute: [] }],
+    }
+    expect(parseWorld(withEmptyRoute)).toEqual(withEmptyRoute)
+  })
+
+  it('throws when a Drone patrolRoute is not an array', () => {
+    const badRoute = {
+      ...validWorld,
+      drones: [{ ...validWorld.drones[0], patrolRoute: { lat: 64.5, lng: 26.25 } }],
+    }
+    expect(() => parseWorld(badRoute)).toThrow(/patrolRoute/)
+  })
+
+  it('throws when a Drone patrolRoute contains a malformed waypoint', () => {
+    const badWaypoint = {
+      ...validWorld,
+      drones: [
+        {
+          ...validWorld.drones[0],
+          patrolRoute: [{ lat: 64.55, lng: 26.3 }, { lat: 'north', lng: 26.05 }],
+        },
+      ],
+    }
+    expect(() => parseWorld(badWaypoint)).toThrow(/patrolRoute/)
+  })
+
   it('throws when a Drone references a homeBaseStationId that does not exist', () => {
     const danglingReference = {
       ...validWorld,

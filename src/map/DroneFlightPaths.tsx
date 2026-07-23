@@ -24,6 +24,13 @@ export interface DroneFlightPathsProps {
  */
 const TRAJECTORY_PATH_OPTIONS = { color: '#000000', weight: 2, opacity: 0.85 }
 const ORBIT_PATH_OPTIONS = { color: '#000000', weight: 2, opacity: 0.85, fillOpacity: 0.05, fillColor: '#000000' }
+/**
+ * A routed Drone's standing Patrol Route loop (issue AA) — a thin, dashed,
+ * no-fill black outline of where it patrols, deliberately lighter/dashed
+ * than the solid `TRAJECTORY_PATH_OPTIONS` dispatch line so a permanent
+ * patrol overlay doesn't compete visually with an active flight.
+ */
+const ROUTE_PATH_OPTIONS = { color: '#000000', weight: 2, opacity: 0.5, dashArray: '6 8' }
 
 /**
  * Always-on map layer (like `DatalinkLines`, unlike the selection-gated
@@ -34,10 +41,13 @@ const ORBIT_PATH_OPTIONS = { color: '#000000', weight: 2, opacity: 0.85, fillOpa
  *   `'travelingToFire'` (to the fire's orbit-entry point), or
  *   `'returningToBase'` (to its home Base Station); and
  * - a black {@link Circle} tracing the actual orbit (fire center + the
- *   snapshotted orbit radius the engine flies) while `'investigatingFire'`.
+ *   snapshotted orbit radius the engine flies) while `'investigatingFire'`; and
+ * - a dashed black closed {@link Polyline} tracing a routed Drone's world
+ *   Patrol Route (issue AA) while it is `'patrolling'` that route.
  *
- * A `'patrolling'` or `'lost'` Drone (or one whose target Event/Fire has
- * gone missing) draws nothing — see {@link droneFlightPathFor}. Recomputed
+ * A `'patrolling'` Drone on the legacy base-station loop, or a `'lost'` Drone
+ * (or one whose target Event/Fire has gone missing), draws nothing — see
+ * {@link droneFlightPathFor}. Recomputed
  * fresh every render from `simulationState`, so each Drone's line/circle
  * tracks its live position and destination as the Simulation Clock advances.
  */
@@ -56,6 +66,21 @@ export function DroneFlightPaths({ simulationState }: DroneFlightPathsProps) {
               center={[path.center.lat, path.center.lng]}
               radius={path.radiusMeters}
               {...ORBIT_PATH_OPTIONS}
+            />,
+          ]
+        }
+
+        if (path.kind === 'route') {
+          // Close the loop for rendering by repeating the first waypoint — the
+          // engine flies the last→first leg (see `patrolRoute.ts`), so the
+          // drawn outline should show it too.
+          const ring = [...path.waypoints, path.waypoints[0]]
+          return [
+            <Polyline
+              key={droneId}
+              className={`drone-route drone-route-${droneId}`}
+              positions={ring.map((waypoint) => [waypoint.lat, waypoint.lng])}
+              {...ROUTE_PATH_OPTIONS}
             />,
           ]
         }
