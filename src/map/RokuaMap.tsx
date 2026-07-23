@@ -27,6 +27,7 @@ import { withDronePositions } from '../engine/liveWorld'
 import { droneTelemetryFor } from '../engine/telemetry'
 import { useSimulationClock } from '../engine/useSimulationClock'
 import { SimulationClockPanel } from '../engine/SimulationClockPanel'
+import { withBase } from '../basePath'
 import type { Scenario } from '../scenario/types'
 import type { Asset, Drone, World } from '../world/types'
 
@@ -299,6 +300,7 @@ export function RokuaMap({ world, scenario }: RokuaMapProps) {
             <GroundTruthToggle enabled={groundTruthViewEnabled} onChange={setGroundTruthViewEnabled} />
             <WindIndicator wind={scenario.wind} />
           </div>
+          <img src={withBase('img/ants_logo.png')} alt="Team ANTS logo" className="map-logo-badge" />
         </MapContainer>
       </div>
       <EventLogPanel log={clock.simulationState.log} scenario={scenario} world={world} />

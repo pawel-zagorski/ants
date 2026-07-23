@@ -189,18 +189,77 @@ body,
   white-space: pre-wrap;
 }
 
-/* Scenario start screen (issue D). */
+/* Scenario start screen (issue D). The forest photo fills the viewport;
+   `.scenario-select-panel` is a semi-transparent dark "glass" card floated
+   over it so the intro copy, logo, and picker all stay legible against a
+   busy background image instead of relying on text-shadow alone. */
 .scenario-select-screen {
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
   height: 100vh;
   width: 100vw;
   font-family: system-ui, sans-serif;
-  padding: 0 24px;
+  padding: 24px;
   text-align: center;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.scenario-select-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  max-width: 480px;
+  padding: 32px 36px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.72);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+  color: #f1f5f9;
+}
+
+.scenario-select-panel h1 {
+  margin: 4px 0 0 0;
+}
+
+/* The logo's own artwork sits on a hard white background, so it's framed in
+   a deliberate white "badge" (rounded corners + padding + shadow) rather
+   than left to float as a stray white rectangle over the dark panel. */
+.scenario-select-logo {
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+.scenario-select-tagline {
+  margin: 0;
+  max-width: 420px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.scenario-select-intro {
+  margin: 0;
+  max-width: 420px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #cbd5e1;
+}
+
+.scenario-select-intro a {
+  color: #93c5fd;
+}
+
+.scenario-select-panel label {
+  margin-top: 8px;
 }
 
 .scenario-select-screen select {
@@ -210,7 +269,7 @@ body,
 
 .scenario-select-description {
   max-width: 420px;
-  color: #4b5563;
+  color: #cbd5e1;
   font-size: 14px;
 }
 
@@ -227,6 +286,27 @@ body,
 .scenario-select-screen button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
+}
+
+/* Team ANTS logo badge — pinned to the map's bottom-right corner: clear of
+   Leaflet's top-left zoom control, the bottom-left simulation controls, and
+   the Asset/Event/Fire status panels (`.asset-panel`), which also anchor to
+   top-right, so a top-right badge would sit underneath/over them whenever
+   one is open. White background matches the logo artwork's own white
+   background, framed as a deliberate badge (rounded corners + shadow)
+   rather than floating a bare image over the map tiles. */
+.map-logo-badge {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  z-index: 1000;
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
 }
 
 /* Shared bottom-left bar that holds the clock panel and ground-truth toggle side-by-side. */
